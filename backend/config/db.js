@@ -1,8 +1,14 @@
 const { Sequelize } = require('sequelize');
+require('dotenv').config();
 
-const sequelize = new Sequelize('db_monitoring_tanaman', 'root', '', {
-  host: 'localhost',
-  dialect: 'mysql'
-});
+const sequelize = new Sequelize(
+  process.env.DB_NAME,
+  process.env.DB_USER,
+  process.env.DB_PASS, // atau DB_PASSWORD jika kamu ubah .env
+  {
+    host: process.env.DB_HOST,
+    dialect: process.env.DB_DIALECT || 'mysql',
+  }
+);
 
 module.exports = sequelize;
