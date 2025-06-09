@@ -1,8 +1,12 @@
 const express = require("express");
 const cors = require("cors");
 const serverless = require("serverless-http");
+require("dotenv").config();
 
-// ... import semua yang diperlukan ...
+// Import routes dan models
+const authRoutes = require("../routes/user");
+const dataSensorRoutes = require("../routes/datasensor");
+// ... import lainnya
 
 const app = express();
 app.use(cors());
@@ -11,31 +15,16 @@ app.use(express.json());
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/data-sensor", dataSensorRoutes);
-app.use("/api/penjadwalan", penjadwalanRoutes);
-app.use("/api/device", deviceRoutes);
-app.use("/api/monitoring", monitoringRoutes);
-app.use("/api/prediksi", prediksiRoutes);
+// ... routes lainnya
 
 // Root endpoint
-app.get("/", async (req, res) => {
-  try {
-    res.json({
-      message: "Greenhouse Monitoring API",
-      status: "running",
-      timestamp: new Date().toISOString(),
-      endpoints: [
-        "/api/auth",
-        "/api/data-sensor", 
-        "/api/penjadwalan",
-        "/api/device",
-        "/api/monitoring",
-        "/api/prediksi"
-      ]
-    });
-  } catch (err) {
-    res.status(500).json({ error: "Server error", detail: err.message });
-  }
+app.get("/", (req, res) => {
+  res.json({
+    message: "Greenhouse Monitoring API",
+    status: "running",
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Export untuk Vercel
-export default serverless(app);
+module.exports = serverless(app);
