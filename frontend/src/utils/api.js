@@ -74,14 +74,12 @@ apiClient.interceptors.response.use(
       if (status === 404) {
         throw new Error(`Endpoint tidak ditemukan: ${error.config.url}`)
       } else if (status === 401) {
-        // PERBAIKAN: Jangan auto-clear auth data untuk login request
         const isLoginRequest = error.config.url?.includes("/login") || error.config.url?.includes("/auth/login")
 
         if (!isLoginRequest) {
           clearAuthData()
         }
 
-        // Jangan auto-redirect jika sedang di halaman login
         if (!isLoginRequest && window.location.pathname !== "/login") {
           setTimeout(() => {
             window.location.href = "/login"
@@ -135,7 +133,6 @@ export const authAPI = {
       console.log("🔐 Attempting login...")
       console.log("- Credentials:", { username: credentials.username, password: "[HIDDEN]" })
 
-      // Coba endpoint utama dulu
       let response
       try {
         response = await apiClient.post("/api/auth/login", credentials)
@@ -143,13 +140,7 @@ export const authAPI = {
       } catch (mainError) {
         console.log("❌ Main endpoint failed:", mainError.message)
 
-        // Coba endpoint alternatif berdasarkan backend routes
-        const alternatives = [
-          "/api/user/login", // Berdasarkan app.use("/api/auth", authRoutes) di backend
-          "/auth/login",
-          "/login",
-          "/api/login",
-        ]
+        const alternatives = ["/api/user/login", "/auth/login", "/login", "/api/login"]
 
         let lastError = mainError
         for (const endpoint of alternatives) {
@@ -171,7 +162,6 @@ export const authAPI = {
 
       console.log("✅ Login response:", response)
 
-      // Simpan data jika login berhasil
       if (response.token) {
         localStorage.setItem("token", response.token)
         console.log("🔑 Token saved")
@@ -193,7 +183,6 @@ export const authAPI = {
       console.log("📝 Attempting registration...")
       console.log("- User data:", { ...userData, password: "[HIDDEN]" })
 
-      // Coba endpoint utama dulu
       let response
       try {
         response = await apiClient.post("/api/auth/register", userData)
@@ -201,7 +190,6 @@ export const authAPI = {
       } catch (mainError) {
         console.log("❌ Main register endpoint failed:", mainError.message)
 
-        // Coba endpoint alternatif
         const alternatives = ["/api/user/register", "/auth/register", "/register", "/api/register"]
 
         let lastError = mainError
@@ -242,13 +230,12 @@ export const authAPI = {
   },
 }
 
-// Sensor API functions dengan multiple endpoint fallbacks
+// Sensor API functions
 export const sensorAPI = {
   getLatest: async () => {
     try {
       console.log("📊 Getting latest sensor data...")
 
-      // Coba berbagai endpoint yang mungkin ada
       const endpoints = [
         "/api/data-sensor/latest",
         "/api/data-sensor",
@@ -267,7 +254,6 @@ export const sensorAPI = {
           console.log(`✅ Sensor data retrieved from: ${endpoint}`)
           console.log("📊 Sensor data:", response)
 
-          // Jika response adalah array, ambil yang terbaru
           if (Array.isArray(response)) {
             return response[0] || null
           }
@@ -316,37 +302,75 @@ export const sensorAPI = {
   },
 }
 
-// Device API functions dengan multiple endpoint fallbacks
+// Device API functions - DISESUAIKAN DENGAN BACKEND STRUCTURE
 export const deviceAPI = {
   getAll: async () => {
     try {
       console.log("🔧 Getting all devices...")
 
-      const endpoints = ["/api/device", "/api/devices", "/device", "/devices", "/api/perangkat"]
+      const response = await apiClient.get("/api/device")
+      console.log("✅ Devices retrieved from backend")
+      console.log("🔧 Raw device data:", response)
 
-      let lastError = null
+      // Konversi struktur backend ke format frontend
+      if (Array.isArray(response) && response.length > 0) {
+        // Ambil device pertama (biasanya cuma ada satu)
+        const backendDevice = response[0]
+        
+        // Konversi ke format yang diharapkan frontend
+        const frontendDevices = [
+          {
+            id: "lampu",
+            nama: "Lampu LED",
+            jenis: "light",
+            status: backendDevice.lampu ? "on" : "off",
+            deskripsi: "Lampu pertumbuhan tanaman",
+            backendId: backendDevice.id,
+          },
+          {
+            id: "ventilasi",
+            nama: "Ventilasi",
+            jenis: "ventilation",
+            status: backendDevice.ventilasi === "buka" ? "on" : "off",
+            deskripsi: "Sistem ventilasi otomatis",
+            backendId: backendDevice.id,
+          },
+          {
+            id: "humidifier",
+            nama: "Humidifier",
+            jenis: "humidifier",
+            status: backendDevice.humidifier ? "on" : "off",
+            deskripsi: "Pengatur kelembapan udara",
+            backendId: backendDevice.id,
+          },
+          {
+            id: "kipas",
+            nama: "Kipas Ventilasi",
+            jenis: "fan",
+            status: backendDevice.kipas ? "on" : "off",
+            deskripsi: "Kipas sirkulasi udara",
+            backendId: backendDevice.id,
+          },
+          {
+            id: "pemanas",
+            nama: "Pemanas",
+            jenis: "heater",
+            status: backendDevice.pemanas ? "on" : "off",
+            deskripsi: "Pemanas greenhouse",
+            backendId: backendDevice.id,
+          },
+        ]
 
-      for (const endpoint of endpoints) {
-        try {
-          console.log(`🔄 Trying device endpoint: ${endpoint}`)
-          const response = await apiClient.get(endpoint)
-          console.log(`✅ Devices retrieved from: ${endpoint}`)
-          console.log("🔧 Device data:", response)
-
-          return Array.isArray(response) ? response : []
-        } catch (error) {
-          console.log(`❌ Failed with device endpoint: ${endpoint} - ${error.message}`)
-          lastError = error
-          continue
-        }
+        console.log("🔄 Converted to frontend format:", frontendDevices)
+        return frontendDevices
       }
 
-      // Jika semua endpoint gagal, return empty array (bukan throw error)
-      console.log("⚠️ No device endpoints available, returning empty array")
+      // Jika tidak ada data, return empty array
+      console.log("⚠️ No device data from backend")
       return []
     } catch (error) {
       console.error("❌ Failed to get devices:", error)
-      return [] // Return empty array instead of throwing
+      return []
     }
   },
 
@@ -354,54 +378,101 @@ export const deviceAPI = {
     try {
       console.log(`🎛️ Controlling device ${deviceId}: ${action}`)
 
-      const endpoints = [
-        `/api/device/${deviceId}/control`,
-        `/api/devices/${deviceId}/control`,
-        `/device/${deviceId}/control`,
-        `/api/device/${deviceId}`, // PUT request dengan action di body
-      ]
-
-      for (const endpoint of endpoints) {
-        try {
-          const response = await apiClient.post(endpoint, { action })
-          console.log(`✅ Device controlled via: ${endpoint}`)
-          return response
-        } catch (error) {
-          continue
-        }
+      // Ambil device yang ada dulu untuk mendapatkan backendId
+      const devices = await deviceAPI.getAll()
+      const device = devices.find(d => d.id === deviceId)
+      
+      if (!device) {
+        throw new Error(`Device ${deviceId} tidak ditemukan`)
       }
 
-      throw new Error("Semua endpoint device control gagal")
+      const backendId = device.backendId
+      if (!backendId) {
+        throw new Error(`Backend ID tidak ditemukan untuk device ${deviceId}`)
+      }
+
+      // Siapkan data update berdasarkan deviceId
+      const updateData = {}
+      
+      if (deviceId === "lampu") {
+        updateData.lampu = action === "on"
+      } else if (deviceId === "ventilasi") {
+        updateData.ventilasi = action === "on" ? "buka" : "tutup"
+      } else if (deviceId === "humidifier") {
+        updateData.humidifier = action === "on"
+      } else if (deviceId === "kipas") {
+        updateData.kipas = action === "on"
+      } else if (deviceId === "pemanas") {
+        updateData.pemanas = action === "on"
+      }
+
+      console.log(`📝 Updating backend device ${backendId} with:`, updateData)
+
+      const response = await apiClient.put(`/api/device/${backendId}`, updateData)
+      console.log("✅ Device controlled successfully")
+      return response
     } catch (error) {
       console.error("❌ Failed to control device:", error)
       throw error
     }
   },
 
-  create: async (deviceData) => {
+  create: async () => {
     try {
-      console.log(`➕ Creating new device...`)
-      console.log("Device data:", deviceData)
+      console.log("➕ Creating default device in backend...")
 
-      const response = await apiClient.post(`/api/device`, deviceData)
+      // Buat device dengan semua field default
+      const deviceData = {
+        lampu: false,
+        ventilasi: "tutup",
+        humidifier: false,
+        kipas: false,
+        pemanas: false,
+      }
+
+      console.log("📝 Creating device with data:", deviceData)
+
+      const response = await apiClient.post("/api/device", deviceData)
       console.log("✅ Device created successfully")
       return response
     } catch (error) {
       console.error("❌ Failed to create device:", error)
+      throw error
+    }
+  },
 
-      // Coba endpoint alternatif
-      const alternatives = [`/api/devices`, `/device`, `/devices`]
+  // Fungsi untuk update semua device sekaligus
+  updateAll: async (controls) => {
+    try {
+      console.log("💾 Updating all devices...")
 
-      for (const endpoint of alternatives) {
-        try {
-          const response = await apiClient.post(endpoint, deviceData)
-          console.log(`✅ Device created via: ${endpoint}`)
-          return response
-        } catch (altError) {
-          continue
-        }
+      // Ambil device yang ada untuk mendapatkan backendId
+      const devices = await deviceAPI.getAll()
+      if (devices.length === 0) {
+        throw new Error("Tidak ada device yang ditemukan")
       }
 
+      const backendId = devices[0].backendId
+      if (!backendId) {
+        throw new Error("Backend ID tidak ditemukan")
+      }
+
+      // Konversi controls ke format backend
+      const updateData = {
+        lampu: controls.lampu || false,
+        ventilasi: controls.ventilasi ? "buka" : "tutup",
+        humidifier: controls.humidifier || false,
+        kipas: controls.kipas || false,
+        pemanas: controls.pemanas || false,
+      }
+
+      console.log(`📝 Updating all devices with:`, updateData)
+
+      const response = await apiClient.put(`/api/device/${backendId}`, updateData)
+      console.log("✅ All devices updated successfully")
+      return response
+    } catch (error) {
+      console.error("❌ Failed to update all devices:", error)
       throw error
     }
   },
@@ -412,14 +483,12 @@ export const testConnection = async () => {
   try {
     console.log("🔍 Testing backend connection...")
 
-    // Test endpoint utama
     const response = await apiClient.get("/")
     console.log("✅ Backend connection successful")
     return response
   } catch (error) {
     console.error("❌ Backend connection failed:", error)
 
-    // Coba endpoint alternatif
     const alternatives = ["/api", "/api/health", "/health"]
 
     for (const endpoint of alternatives) {
