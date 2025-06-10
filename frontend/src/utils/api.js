@@ -21,52 +21,6 @@ const getApiBaseUrl = () => {
   return railwayUrl
 }
 
-// Test koneksi dan cek endpoint yang tersedia
-const discoverAvailableEndpoints = async () => {
-  const railwayUrl = "https://monitoring-greenhouse-production.up.railway.app"
-
-  try {
-    console.log("🔍 Discovering available endpoints...")
-
-    // Test root endpoint untuk mendapatkan info API
-    const response = await fetch(`${railwayUrl}/`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-      },
-    })
-
-    if (response.ok) {
-      const data = await response.json()
-      console.log("✅ API Info received:", data)
-
-      if (data.endpoints) {
-        console.log("📋 Available endpoints:", data.endpoints)
-        return data.endpoints
-      }
-    }
-
-    // Jika root tidak memberikan info, coba /api
-    const apiResponse = await fetch(`${railwayUrl}/api`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-      },
-    })
-
-    if (apiResponse.ok) {
-      const apiData = await apiResponse.json()
-      console.log("✅ API endpoints info:", apiData)
-      return apiData.endpoints || []
-    }
-
-    return null
-  } catch (error) {
-    console.error("❌ Failed to discover endpoints:", error)
-    return null
-  }
-}
-
 // Konfigurasi base axios instance
 const apiClient = axios.create({
   baseURL: getApiBaseUrl(),
@@ -77,19 +31,17 @@ const apiClient = axios.create({
   },
 })
 
-// Request interceptor dengan debugging
+// Request interceptor
 apiClient.interceptors.request.use(
   (config) => {
-    console.log("🚀 API Request Details:")
+    console.log("🚀 API Request:")
     console.log("- Method:", config.method?.toUpperCase())
-    console.log("- Base URL:", config.baseURL)
-    console.log("- Endpoint:", config.url)
-    console.log("- Full URL:", `${config.baseURL}${config.url}`)
+    console.log("- URL:", `${config.baseURL}${config.url}`)
 
     const token = localStorage.getItem("token")
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
-      console.log("🔑 Token added to request")
+      console.log("🔑 Token added")
     }
 
     return config
@@ -100,56 +52,46 @@ apiClient.interceptors.request.use(
   },
 )
 
-// Response interceptor untuk handle error
+// Response interceptor
 apiClient.interceptors.response.use(
   (response) => {
-    console.log("✅ API Response Details:")
+    console.log("✅ API Response:")
     console.log("- Status:", response.status)
-    console.log("- URL:", response.config.url)
     console.log("- Data:", response.data)
-
     return response.data
   },
   (error) => {
-    console.error("❌ API Error Details:")
-    console.error("- Error:", error)
+    console.error("❌ API Error:")
+    console.error("- Error:", error.message)
 
     if (error.response) {
-      console.error("- Response status:", error.response.status)
-      console.error("- Response data:", error.response.data)
+      console.error("- Status:", error.response.status)
+      console.error("- Data:", error.response.data)
 
       const status = error.response.status
       const message = error.response.data?.message || error.response.data?.error || "Terjadi kesalahan pada server"
 
       if (status === 404) {
-        console.error("❌ 404 Error - Endpoint not found!")
-        console.error("- Requested URL:", error.config.url)
-        console.error("- Available endpoints might be different")
-        throw new Error(`Endpoint tidak ditemukan: ${error.config.url}. Periksa konfigurasi backend.`)
+        throw new Error(`Endpoint tidak ditemukan: ${error.config.url}`)
       } else if (status === 401) {
         clearAuthData()
-        if (window.location.pathname !== "/login") {
-          window.location.href = "/login"
-        }
         throw new Error("Sesi Anda telah berakhir. Silakan login kembali.")
       } else if (status === 403) {
-        throw new Error("Anda tidak memiliki akses untuk melakukan tindakan ini.")
+        throw new Error("Akses ditolak. Periksa konfigurasi CORS.")
       } else if (status >= 500) {
-        throw new Error("Terjadi kesalahan pada server. Silakan coba lagi nanti.")
+        throw new Error("Terjadi kesalahan pada server.")
       }
 
       throw new Error(message)
     } else if (error.request) {
-      console.error("- Network Error:", error.request)
-      throw new Error("Tidak dapat terhubung ke server. Periksa koneksi internet dan konfigurasi backend.")
+      throw new Error("Tidak dapat terhubung ke server. Periksa koneksi internet.")
     } else {
-      console.error("- Setup Error:", error.message)
-      throw new Error("Terjadi kesalahan yang tidak terduga: " + error.message)
+      throw new Error("Terjadi kesalahan: " + error.message)
     }
   },
 )
 
-// Helper functions untuk authentication
+// Helper functions
 export const isAuthenticated = () => {
   const token = localStorage.getItem("token")
   const user = localStorage.getItem("user")
@@ -171,141 +113,89 @@ export const clearAuthData = () => {
   localStorage.removeItem("user")
 }
 
-// Auth API functions dengan endpoint discovery
+// Auth API functions dengan fallback endpoints
 export const authAPI = {
   login: async (credentials) => {
     try {
-      console.log("🔐 Login attempt started")
-      console.log("- Username:", credentials.username)
+      console.log("🔐 Attempting login...")
 
-      // Discover available endpoints first
-      const endpoints = await discoverAvailableEndpoints()
-      console.log("📋 Discovered endpoints:", endpoints)
+      // Berdasarkan backend routes: app.use("/api/auth", authRoutes)
+      // Jadi endpoint yang benar adalah /api/auth/login
+      const response = await apiClient.post("/api/auth/login", credentials)
 
-      // Coba berbagai kemungkinan endpoint login
-      const possibleLoginEndpoints = [
-        "/api/auth/login",
-        "/auth/login",
-        "/login",
-        "/api/login",
-        "/api/user/login", // Berdasarkan routes yang ada
-      ]
+      console.log("✅ Login successful")
 
-      let response = null
-      let lastError = null
-
-      for (const endpoint of possibleLoginEndpoints) {
-        try {
-          console.log(`🔄 Trying login endpoint: ${endpoint}`)
-          response = await apiClient.post(endpoint, credentials)
-          console.log(`✅ Success with login endpoint: ${endpoint}`)
-          break
-        } catch (error) {
-          console.log(`❌ Failed with login endpoint: ${endpoint}`)
-          console.log("- Error:", error.message)
-          lastError = error
-          continue
-        }
-      }
-
-      if (!response) {
-        console.error("❌ All login endpoints failed")
-        console.error("💡 Available endpoints from backend:", endpoints)
-        throw lastError || new Error("Semua endpoint login gagal. Periksa konfigurasi backend.")
-      }
-
-      console.log("✅ Login response received:", response)
-
-      // Simpan token dan user data jika login berhasil
+      // Simpan data jika login berhasil
       if (response.token) {
         localStorage.setItem("token", response.token)
-        console.log("🔑 Token saved to localStorage")
+        console.log("🔑 Token saved")
       }
       if (response.user) {
         localStorage.setItem("user", JSON.stringify(response.user))
-        console.log("👤 User data saved to localStorage")
+        console.log("👤 User data saved")
       }
 
       return response
     } catch (error) {
-      console.error("❌ Login gagal:", error)
+      console.error("❌ Login failed:", error.message)
+
+      // Jika endpoint utama gagal, coba alternatif
+      if (error.message.includes("tidak ditemukan")) {
+        console.log("🔄 Trying alternative login endpoints...")
+
+        const alternatives = ["/auth/login", "/login", "/api/user/login"]
+
+        for (const endpoint of alternatives) {
+          try {
+            console.log(`🔄 Trying: ${endpoint}`)
+            const response = await apiClient.post(endpoint, credentials)
+
+            if (response.token) {
+              localStorage.setItem("token", response.token)
+            }
+            if (response.user) {
+              localStorage.setItem("user", JSON.stringify(response.user))
+            }
+
+            console.log(`✅ Login successful with: ${endpoint}`)
+            return response
+          } catch (altError) {
+            console.log(`❌ Failed: ${endpoint}`)
+            continue
+          }
+        }
+      }
+
       throw error
     }
   },
 
   register: async (userData) => {
     try {
-      console.log("📝 Register attempt started")
+      console.log("📝 Attempting registration...")
 
-      // Coba berbagai kemungkinan endpoint register
-      const possibleRegisterEndpoints = [
-        "/api/auth/register",
-        "/auth/register",
-        "/register",
-        "/api/register",
-        "/api/user/register", // Berdasarkan routes yang ada
-      ]
+      // Endpoint utama berdasarkan backend routes
+      const response = await apiClient.post("/api/auth/register", userData)
+      console.log("✅ Registration successful")
+      return response
+    } catch (error) {
+      console.error("❌ Registration failed:", error.message)
 
-      let response = null
-      let lastError = null
+      // Coba endpoint alternatif jika utama gagal
+      if (error.message.includes("tidak ditemukan")) {
+        const alternatives = ["/auth/register", "/register", "/api/user/register"]
 
-      for (const endpoint of possibleRegisterEndpoints) {
-        try {
-          console.log(`🔄 Trying register endpoint: ${endpoint}`)
-          response = await apiClient.post(endpoint, userData)
-          console.log(`✅ Success with register endpoint: ${endpoint}`)
-          break
-        } catch (error) {
-          console.log(`❌ Failed with register endpoint: ${endpoint}`)
-          lastError = error
-          continue
+        for (const endpoint of alternatives) {
+          try {
+            const response = await apiClient.post(endpoint, userData)
+            console.log(`✅ Registration successful with: ${endpoint}`)
+            return response
+          } catch (altError) {
+            continue
+          }
         }
       }
 
-      if (!response) {
-        throw lastError || new Error("Semua endpoint register gagal")
-      }
-
-      console.log("✅ Registrasi berhasil")
-      return response
-    } catch (error) {
-      console.error("❌ Registrasi gagal:", error)
-      throw error
-    }
-  },
-
-  getProfile: async () => {
-    try {
-      console.log("👤 Mengambil data profil pengguna")
-      const response = await apiClient.get("/api/auth/profile")
-      console.log("✅ Data profil berhasil diambil")
-      return response
-    } catch (error) {
-      console.error("❌ Gagal mengambil data profil:", error)
-      throw error
-    }
-  },
-
-  updateProfile: async (profileData) => {
-    try {
-      console.log("📝 Memperbarui profil pengguna")
-      const response = await apiClient.put("/api/auth/profile", profileData)
-      console.log("✅ Profil berhasil diperbarui")
-      return response
-    } catch (error) {
-      console.error("❌ Gagal memperbarui profil:", error)
-      throw error
-    }
-  },
-
-  changePassword: async (passwordData) => {
-    try {
-      console.log("🔒 Mengubah password pengguna")
-      const response = await apiClient.put("/api/auth/change-password", passwordData)
-      console.log("✅ Password berhasil diubah")
-      return response
-    } catch (error) {
-      console.error("❌ Gagal mengubah password:", error)
       throw error
     }
   },
@@ -313,172 +203,131 @@ export const authAPI = {
   logout: async () => {
     try {
       await apiClient.post("/api/auth/logout")
-      clearAuthData()
-      console.log("✅ Logout berhasil")
     } catch (error) {
       console.error("❌ Logout error:", error)
+    } finally {
       clearAuthData()
-    }
-  },
-
-  verifyToken: async () => {
-    try {
-      const response = await apiClient.get("/api/auth/verify")
-      return response
-    } catch (error) {
-      console.error("❌ Token verification failed:", error)
-      throw error
+      console.log("✅ Logout completed")
     }
   },
 }
 
-// Sensor API functions dengan endpoint discovery
+// Sensor API functions
 export const sensorAPI = {
   getLatest: async () => {
     try {
-      console.log("📊 Mengambil data sensor terbaru")
+      console.log("📊 Getting latest sensor data...")
 
-      const possibleSensorEndpoints = [
-        "/api/data-sensor/latest",
-        "/api/sensor/latest",
-        "/sensor/latest",
-        "/api/sensors/latest",
-        "/api/data-sensor", // Mungkin endpoint ini mengembalikan data terbaru
-        "/data-sensor/latest",
-      ]
+      // Endpoint utama berdasarkan backend routes
+      const response = await apiClient.get("/api/data-sensor/latest")
+      console.log("✅ Sensor data retrieved")
+      return response
+    } catch (error) {
+      console.error("❌ Failed to get sensor data:", error.message)
 
-      for (const endpoint of possibleSensorEndpoints) {
-        try {
-          console.log(`🔄 Trying sensor endpoint: ${endpoint}`)
-          const response = await apiClient.get(endpoint)
-          console.log(`✅ Success getting sensor data from: ${endpoint}`)
-          return response
-        } catch (error) {
-          console.log(`❌ Failed with sensor endpoint: ${endpoint}`)
-          continue
+      // Coba endpoint alternatif
+      if (error.message.includes("tidak ditemukan")) {
+        const alternatives = ["/api/data-sensor", "/api/sensor/latest", "/data-sensor/latest"]
+
+        for (const endpoint of alternatives) {
+          try {
+            const response = await apiClient.get(endpoint)
+            console.log(`✅ Sensor data retrieved from: ${endpoint}`)
+            return response
+          } catch (altError) {
+            continue
+          }
         }
       }
 
-      throw new Error("Semua endpoint sensor gagal")
-    } catch (error) {
-      console.error("❌ Error mengambil data sensor:", error)
       throw error
     }
   },
 
   getHistory: async (limit = 50) => {
     try {
-      console.log(`📈 Mengambil riwayat sensor (limit: ${limit})`)
-
-      const possibleHistoryEndpoints = [
-        `/api/data-sensor/history?limit=${limit}`,
-        `/api/sensor/history?limit=${limit}`,
-        `/api/data-sensor?limit=${limit}`,
-        `/data-sensor/history?limit=${limit}`,
-      ]
-
-      for (const endpoint of possibleHistoryEndpoints) {
-        try {
-          const response = await apiClient.get(endpoint)
-          console.log(`✅ Success getting sensor history from: ${endpoint}`)
-          return response
-        } catch (error) {
-          continue
-        }
-      }
-
-      throw new Error("Semua endpoint sensor history gagal")
+      console.log(`📈 Getting sensor history (limit: ${limit})...`)
+      const response = await apiClient.get(`/api/data-sensor/history?limit=${limit}`)
+      return response
     } catch (error) {
-      console.error("❌ Error mengambil riwayat sensor:", error)
+      console.error("❌ Failed to get sensor history:", error)
       throw error
     }
   },
 }
 
-// Device API functions dengan endpoint discovery
+// Device API functions
 export const deviceAPI = {
   getAll: async () => {
     try {
-      console.log("🔧 Mengambil semua data device")
+      console.log("🔧 Getting all devices...")
 
-      const possibleDeviceEndpoints = ["/api/device", "/api/devices", "/device", "/devices"]
+      // Endpoint utama berdasarkan backend routes
+      const response = await apiClient.get("/api/device")
+      console.log("✅ Devices retrieved")
+      return response
+    } catch (error) {
+      console.error("❌ Failed to get devices:", error.message)
 
-      for (const endpoint of possibleDeviceEndpoints) {
-        try {
-          console.log(`🔄 Trying device endpoint: ${endpoint}`)
-          const response = await apiClient.get(endpoint)
-          console.log(`✅ Success getting devices from: ${endpoint}`)
-          return response
-        } catch (error) {
-          console.log(`❌ Failed with device endpoint: ${endpoint}`)
-          continue
+      // Coba endpoint alternatif
+      if (error.message.includes("tidak ditemukan")) {
+        const alternatives = ["/api/devices", "/device", "/devices"]
+
+        for (const endpoint of alternatives) {
+          try {
+            const response = await apiClient.get(endpoint)
+            console.log(`✅ Devices retrieved from: ${endpoint}`)
+            return response
+          } catch (altError) {
+            continue
+          }
         }
       }
 
-      throw new Error("Semua endpoint device gagal")
-    } catch (error) {
-      console.error("❌ Error mengambil data device:", error)
       throw error
     }
   },
 
   control: async (deviceId, action) => {
     try {
-      console.log(`🎛️ Kontrol device ID: ${deviceId} - Action: ${action}`)
-
-      const possibleControlEndpoints = [
-        `/api/device/${deviceId}/control`,
-        `/api/devices/${deviceId}/control`,
-        `/device/${deviceId}/control`,
-        `/api/device/${deviceId}`, // PUT request dengan action di body
-      ]
-
-      for (const endpoint of possibleControlEndpoints) {
-        try {
-          const response = await apiClient.post(endpoint, { action })
-          console.log(`✅ Success controlling device via: ${endpoint}`)
-          return response
-        } catch (error) {
-          continue
-        }
-      }
-
-      throw new Error("Semua endpoint device control gagal")
+      console.log(`🎛️ Controlling device ${deviceId}: ${action}`)
+      const response = await apiClient.post(`/api/device/${deviceId}/control`, { action })
+      console.log("✅ Device controlled successfully")
+      return response
     } catch (error) {
-      console.error("❌ Error kontrol device:", error)
+      console.error("❌ Failed to control device:", error)
       throw error
     }
   },
 }
 
-// Fungsi untuk test koneksi dan discover endpoints
+// Test connection function
 export const testConnection = async () => {
   try {
-    console.log("🔍 Testing connection to backend...")
+    console.log("🔍 Testing backend connection...")
 
-    // Test berbagai health check endpoints
-    const healthEndpoints = ["/api/health", "/health", "/", "/api", "/api/status"]
+    // Test endpoint utama
+    const response = await apiClient.get("/")
+    console.log("✅ Backend connection successful")
+    return response
+  } catch (error) {
+    console.error("❌ Backend connection failed:", error)
 
-    for (const endpoint of healthEndpoints) {
+    // Coba endpoint alternatif
+    const alternatives = ["/api", "/api/health", "/health"]
+
+    for (const endpoint of alternatives) {
       try {
-        console.log(`🔄 Testing endpoint: ${endpoint}`)
         const response = await apiClient.get(endpoint)
-        console.log(`✅ Backend connection successful via: ${endpoint}`)
-        console.log("📋 Response data:", response)
+        console.log(`✅ Backend connected via: ${endpoint}`)
         return response
-      } catch (error) {
-        console.log(`❌ Failed health check: ${endpoint}`)
+      } catch (altError) {
         continue
       }
     }
 
-    throw new Error("Semua health check endpoints gagal")
-  } catch (error) {
-    console.error("❌ Backend connection failed:", error)
     throw error
   }
 }
 
-// Export semua yang diperlukan
-export { discoverAvailableEndpoints }
 export default apiClient

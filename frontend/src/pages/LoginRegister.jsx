@@ -4,7 +4,6 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import "../styles/LoginRegister.css"
 import { authAPI } from "../utils/api"
-import ConnectionDebugger from "../utils/ConnectionDebugger"
 import {
   FiUser,
   FiLock,
@@ -42,7 +41,6 @@ export default function LoginRegister() {
   useEffect(() => {
     document.title = isLogin ? "Login - Smart Greenhouse" : "Register - Smart Greenhouse"
 
-    // Update waktu setiap detik
     const timer = setInterval(() => {
       setCurrentTime(new Date())
     }, 1000)
@@ -71,7 +69,6 @@ export default function LoginRegister() {
       ...prev,
       [name]: value,
     }))
-    // Clear error ketika user mulai mengetik
     if (errorMessage) setErrorMessage("")
     if (successMessage) setSuccessMessage("")
   }
@@ -129,10 +126,6 @@ export default function LoginRegister() {
     try {
       if (isLogin) {
         console.log("🔐 Attempting login to Railway backend...")
-        console.log(
-          "- Backend URL:",
-          import.meta.env.VITE_API_URL || "https://monitoring-greenhouse-production.up.railway.app",
-        )
 
         const response = await authAPI.login({
           username: formData.username,
@@ -140,13 +133,13 @@ export default function LoginRegister() {
         })
 
         setSuccessMessage("Login berhasil! Mengalihkan ke dashboard...")
-        console.log("✅ Login successful, redirecting to dashboard...")
+        console.log("✅ Login successful, redirecting...")
 
         setTimeout(() => {
           navigate("/dashboard")
         }, 1500)
       } else {
-        console.log("📝 Attempting registration to Railway backend...")
+        console.log("📝 Attempting registration...")
         const registerData = {
           username: formData.username,
           password: formData.password,
@@ -160,7 +153,7 @@ export default function LoginRegister() {
         await authAPI.register(registerData)
 
         setSuccessMessage("Registrasi berhasil! Silakan login.")
-        console.log("✅ Registration successful, switching to login mode...")
+        console.log("✅ Registration successful")
 
         setTimeout(() => {
           setIsLogin(true)
@@ -184,10 +177,10 @@ export default function LoginRegister() {
         errorMsg = "Username atau password salah"
       } else if (errorMsg.includes("User already exists")) {
         errorMsg = "Username sudah digunakan, silakan pilih username lain"
-      } else if (errorMsg.includes("CORS Error")) {
-        errorMsg = "Backend tidak dapat diakses. Periksa konfigurasi CORS di Railway."
-      } else if (errorMsg.includes("Railway tidak dapat diakses")) {
-        errorMsg = "Backend Railway sedang offline atau tidak dapat diakses."
+      } else if (errorMsg.includes("tidak ditemukan")) {
+        errorMsg = "Endpoint tidak ditemukan. Backend mungkin belum siap."
+      } else if (errorMsg.includes("Akses ditolak")) {
+        errorMsg = "Akses ditolak. Periksa konfigurasi CORS di backend."
       }
 
       setErrorMessage(errorMsg)
@@ -215,9 +208,6 @@ export default function LoginRegister() {
 
   return (
     <div className="auth-body">
-      {/* Debug Component - hanya tampil di development */}
-      {import.meta.env.DEV && <ConnectionDebugger />}
-
       {/* Background Elements */}
       <div className="auth-background">
         <div className="floating-element element-1">
@@ -427,7 +417,7 @@ export default function LoginRegister() {
             </div>
           </div>
 
-          {/* Features Info - Enhanced */}
+          {/* Features Info */}
           <div className="features-info">
             <div className="features-header">
               <FiActivity className="features-icon" />
