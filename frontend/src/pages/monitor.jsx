@@ -53,11 +53,14 @@ const Monitoring = () => {
       setLoading(true)
 
       // Coba endpoint monitoring terlebih dahulu, jika gagal gunakan data sensor
+      // Coba endpoint monitoring terlebih dahulu, jika gagal gunakan data sensor
+      const baseUrl = import.meta.env.VITE_API_URL || "https://monitoring-greenhouse-production.up.railway.app"
+
       const endpoints = [
+        `${baseUrl}/api/monitoring`,
         "/api/monitoring",
-        "http://localhost:5000/api/monitoring",
+        `${baseUrl}/api/data-sensor/latest`,
         "/api/data-sensor/latest",
-        "http://localhost:5000/api/data-sensor/latest",
       ]
 
       let response = null
