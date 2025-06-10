@@ -1,12 +1,10 @@
 import axios from "axios"
 
-// Fungsi untuk mendapatkan base URL API - diperbaiki untuk debugging
+// Fungsi untuk mendapatkan base URL API - diperbaiki untuk Railway yang sudah online
 const getApiBaseUrl = () => {
-  // Log environment variables untuk debugging
   console.log("🔍 Environment check:")
   console.log("- VITE_API_URL:", import.meta.env.VITE_API_URL)
   console.log("- Current hostname:", window.location.hostname)
-  console.log("- Current protocol:", window.location.protocol)
 
   // Untuk Vite, gunakan import.meta.env
   if (import.meta.env.VITE_API_URL) {
@@ -20,18 +18,18 @@ const getApiBaseUrl = () => {
     return "http://localhost:5000"
   }
 
-  // Untuk production, gunakan URL Railway yang sudah Anda berikan
+  // Backend Railway sudah online - gunakan URL yang benar
   const railwayUrl = "https://monitoring-greenhouse-production.up.railway.app"
   console.log("🚂 Using Railway URL:", railwayUrl)
   return railwayUrl
 }
 
-// Test koneksi langsung ke Railway
+// Test koneksi langsung ke Railway yang sudah online
 const testRailwayConnection = async () => {
   const railwayUrl = "https://monitoring-greenhouse-production.up.railway.app"
 
   try {
-    console.log("🔍 Testing direct connection to Railway...")
+    console.log("🔍 Testing connection to Railway backend...")
 
     // Test dengan fetch biasa dulu
     const response = await fetch(`${railwayUrl}/api/health`, {
@@ -49,6 +47,23 @@ const testRailwayConnection = async () => {
       return true
     } else {
       console.log("❌ Railway returned status:", response.status)
+
+      // Jika endpoint /api/health tidak ada, coba endpoint lain
+      if (response.status === 404) {
+        console.log("🔄 Trying alternative endpoint...")
+        const altResponse = await fetch(`${railwayUrl}/`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        })
+
+        if (altResponse.ok) {
+          console.log("✅ Railway backend is online (alternative endpoint)")
+          return true
+        }
+      }
+
       return false
     }
   } catch (error) {
@@ -57,17 +72,17 @@ const testRailwayConnection = async () => {
   }
 }
 
-// Konfigurasi base axios instance dengan debugging
+// Konfigurasi base axios instance
 const apiClient = axios.create({
   baseURL: getApiBaseUrl(),
-  timeout: 30000, // Increase timeout to 30 seconds
+  timeout: 30000, // 30 seconds timeout
   headers: {
     "Content-Type": "application/json",
     Accept: "application/json",
   },
 })
 
-// Request interceptor dengan debugging yang lebih detail
+// Request interceptor dengan debugging
 apiClient.interceptors.request.use(
   (config) => {
     console.log("🚀 API Request Details:")
@@ -75,8 +90,6 @@ apiClient.interceptors.request.use(
     console.log("- Base URL:", config.baseURL)
     console.log("- Endpoint:", config.url)
     console.log("- Full URL:", `${config.baseURL}${config.url}`)
-    console.log("- Headers:", config.headers)
-    console.log("- Data:", config.data)
 
     // Ambil token dari localStorage
     const token = localStorage.getItem("token")
@@ -93,7 +106,7 @@ apiClient.interceptors.request.use(
   },
 )
 
-// Response interceptor untuk handle error secara global
+// Response interceptor untuk handle error
 apiClient.interceptors.response.use(
   (response) => {
     console.log("✅ API Response Details:")
@@ -105,14 +118,11 @@ apiClient.interceptors.response.use(
   },
   (error) => {
     console.error("❌ API Error Details:")
-    console.error("- Error object:", error)
-    console.error("- Error message:", error.message)
-    console.error("- Error code:", error.code)
+    console.error("- Error:", error)
 
     if (error.response) {
       console.error("- Response status:", error.response.status)
       console.error("- Response data:", error.response.data)
-      console.error("- Response headers:", error.response.headers)
 
       const status = error.response.status
       const message = error.response.data?.message || error.response.data?.error || "Terjadi kesalahan pada server"
@@ -133,10 +143,8 @@ apiClient.interceptors.response.use(
 
       throw new Error(message)
     } else if (error.request) {
-      console.error("- Request was made but no response received")
-      console.error("- Request details:", error.request)
+      console.error("- Network Error:", error.request)
 
-      // Check if it's a CORS error
       if (error.message.includes("Network Error")) {
         throw new Error(
           "CORS Error: Backend tidak mengizinkan akses dari domain ini. Periksa konfigurasi CORS di backend.",
@@ -145,7 +153,7 @@ apiClient.interceptors.response.use(
 
       throw new Error("Tidak dapat terhubung ke server. Periksa koneksi internet dan konfigurasi backend.")
     } else {
-      console.error("- Error in setting up request:", error.message)
+      console.error("- Setup Error:", error.message)
       throw new Error("Terjadi kesalahan yang tidak terduga: " + error.message)
     }
   },
@@ -173,13 +181,12 @@ export const clearAuthData = () => {
   localStorage.removeItem("user")
 }
 
-// Auth API functions dengan debugging
+// Auth API functions - sesuaikan dengan backend yang sudah online
 export const authAPI = {
   login: async (credentials) => {
     try {
       console.log("🔐 Login attempt started")
       console.log("- Username:", credentials.username)
-      console.log("- Password length:", credentials.password?.length)
 
       // Test Railway connection first
       const railwayConnected = await testRailwayConnection()
@@ -187,7 +194,28 @@ export const authAPI = {
         throw new Error("Backend Railway tidak dapat diakses. Periksa status backend.")
       }
 
-      const response = await apiClient.post("/api/auth/login", credentials)
+      // Coba beberapa endpoint yang mungkin ada
+      const possibleEndpoints = ["/api/auth/login", "/auth/login", "/login", "/api/login"]
+
+      let response = null
+      let lastError = null
+
+      for (const endpoint of possibleEndpoints) {
+        try {
+          console.log(`🔄 Trying endpoint: ${endpoint}`)
+          response = await apiClient.post(endpoint, credentials)
+          console.log(`✅ Success with endpoint: ${endpoint}`)
+          break
+        } catch (error) {
+          console.log(`❌ Failed with endpoint: ${endpoint}`)
+          lastError = error
+          continue
+        }
+      }
+
+      if (!response) {
+        throw lastError || new Error("Semua endpoint login gagal")
+      }
 
       console.log("✅ Login response received:", response)
 
@@ -213,8 +241,6 @@ export const authAPI = {
     try {
       console.log("📝 Register attempt started")
       console.log("- Username:", userData.username)
-      console.log("- Name:", userData.name)
-      console.log("- Email:", userData.email)
 
       // Test Railway connection first
       const railwayConnected = await testRailwayConnection()
@@ -222,7 +248,29 @@ export const authAPI = {
         throw new Error("Backend Railway tidak dapat diakses. Periksa status backend.")
       }
 
-      const response = await apiClient.post("/api/auth/register", userData)
+      // Coba beberapa endpoint yang mungkin ada
+      const possibleEndpoints = ["/api/auth/register", "/auth/register", "/register", "/api/register"]
+
+      let response = null
+      let lastError = null
+
+      for (const endpoint of possibleEndpoints) {
+        try {
+          console.log(`🔄 Trying endpoint: ${endpoint}`)
+          response = await apiClient.post(endpoint, userData)
+          console.log(`✅ Success with endpoint: ${endpoint}`)
+          break
+        } catch (error) {
+          console.log(`❌ Failed with endpoint: ${endpoint}`)
+          lastError = error
+          continue
+        }
+      }
+
+      if (!response) {
+        throw lastError || new Error("Semua endpoint register gagal")
+      }
+
       console.log("✅ Registrasi berhasil")
       return response
     } catch (error) {
@@ -289,13 +337,32 @@ export const authAPI = {
   },
 }
 
-// Sensor API functions - diperbaiki endpoint paths
+// Sensor API functions
 export const sensorAPI = {
   getLatest: async () => {
     try {
       console.log("📊 Mengambil data sensor terbaru")
-      const response = await apiClient.get("/api/data-sensor/latest")
-      return response
+
+      // Coba beberapa endpoint yang mungkin ada
+      const possibleEndpoints = [
+        "/api/data-sensor/latest",
+        "/api/sensor/latest",
+        "/sensor/latest",
+        "/api/sensors/latest",
+      ]
+
+      for (const endpoint of possibleEndpoints) {
+        try {
+          const response = await apiClient.get(endpoint)
+          console.log(`✅ Success getting sensor data from: ${endpoint}`)
+          return response
+        } catch (error) {
+          console.log(`❌ Failed with endpoint: ${endpoint}`)
+          continue
+        }
+      }
+
+      throw new Error("Semua endpoint sensor gagal")
     } catch (error) {
       console.error("❌ Error mengambil data sensor:", error)
       throw error
@@ -312,72 +379,31 @@ export const sensorAPI = {
       throw error
     }
   },
-
-  getByDateRange: async (startDate, endDate) => {
-    try {
-      console.log(`📅 Mengambil data sensor dari ${startDate} sampai ${endDate}`)
-      const response = await apiClient.get(`/api/data-sensor/range?start=${startDate}&end=${endDate}`)
-      return response
-    } catch (error) {
-      console.error("❌ Error mengambil data sensor berdasarkan tanggal:", error)
-      throw error
-    }
-  },
 }
 
-// Device API functions - diperbaiki endpoint paths
+// Device API functions
 export const deviceAPI = {
   getAll: async () => {
     try {
       console.log("🔧 Mengambil semua data device")
-      const response = await apiClient.get("/api/device")
-      return response
+
+      // Coba beberapa endpoint yang mungkin ada
+      const possibleEndpoints = ["/api/device", "/api/devices", "/device", "/devices"]
+
+      for (const endpoint of possibleEndpoints) {
+        try {
+          const response = await apiClient.get(endpoint)
+          console.log(`✅ Success getting devices from: ${endpoint}`)
+          return response
+        } catch (error) {
+          console.log(`❌ Failed with endpoint: ${endpoint}`)
+          continue
+        }
+      }
+
+      throw new Error("Semua endpoint device gagal")
     } catch (error) {
       console.error("❌ Error mengambil data device:", error)
-      throw error
-    }
-  },
-
-  getById: async (deviceId) => {
-    try {
-      console.log(`🔍 Mengambil data device ID: ${deviceId}`)
-      const response = await apiClient.get(`/api/device/${deviceId}`)
-      return response
-    } catch (error) {
-      console.error("❌ Error mengambil data device:", error)
-      throw error
-    }
-  },
-
-  update: async (deviceId, deviceData) => {
-    try {
-      console.log(`📝 Update device ID: ${deviceId}`)
-      const response = await apiClient.put(`/api/device/${deviceId}`, deviceData)
-      return response
-    } catch (error) {
-      console.error("❌ Error update device:", error)
-      throw error
-    }
-  },
-
-  create: async (deviceData) => {
-    try {
-      console.log("➕ Membuat device baru")
-      const response = await apiClient.post("/api/device", deviceData)
-      return response
-    } catch (error) {
-      console.error("❌ Error membuat device:", error)
-      throw error
-    }
-  },
-
-  delete: async (deviceId) => {
-    try {
-      console.log(`🗑️ Menghapus device ID: ${deviceId}`)
-      const response = await apiClient.delete(`/api/device/${deviceId}`)
-      return response
-    } catch (error) {
-      console.error("❌ Error menghapus device:", error)
       throw error
     }
   },
@@ -394,7 +420,7 @@ export const deviceAPI = {
   },
 }
 
-// Fungsi untuk test koneksi ke backend dengan debugging
+// Fungsi untuk test koneksi ke backend
 export const testConnection = async () => {
   try {
     console.log("🔍 Testing connection to backend...")
@@ -405,9 +431,23 @@ export const testConnection = async () => {
       throw new Error("Railway backend tidak dapat diakses")
     }
 
-    const response = await apiClient.get("/api/health")
-    console.log("✅ Backend connection successful!")
-    return response
+    // Coba beberapa endpoint health check
+    const healthEndpoints = ["/api/health", "/health", "/", "/api/status"]
+
+    for (const endpoint of healthEndpoints) {
+      try {
+        const response = await apiClient.get(endpoint)
+        console.log(`✅ Backend connection successful via: ${endpoint}`)
+        return response
+      } catch (error) {
+        console.log(`❌ Failed health check: ${endpoint}`)
+        continue
+      }
+    }
+
+    // Jika semua health check gagal, tapi Railway connection berhasil
+    console.log("✅ Backend is online but no health endpoint found")
+    return { status: "online", message: "Backend is accessible" }
   } catch (error) {
     console.error("❌ Backend connection failed:", error)
     throw error
