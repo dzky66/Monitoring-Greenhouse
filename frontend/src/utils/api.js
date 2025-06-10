@@ -10,7 +10,7 @@ const getApiBaseUrl = () => {
     return "http://localhost:5000/api"
   }
 
-  return "https://monitoring-greenhouse-production.up.railway.app/api"
+  return "https://monitoring-greenhouse-production.up.railway.app"
 }
 
 const apiClient = axios.create({
