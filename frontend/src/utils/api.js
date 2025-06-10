@@ -13,7 +13,9 @@ const getApiBaseUrl = () => {
   }
 
   // Untuk production, gunakan URL relatif atau URL production
-  return "/api"
+  // Untuk production, gunakan URL backend Railway
+return "https://monitoring-greenhouse-production.up.railway.app/api"
+
 }
 
 // Konfigurasi base axios instance
