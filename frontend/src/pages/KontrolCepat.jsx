@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import axios from "axios"
+import { deviceAPI } from "../utils/api"
 import "../styles/KontrolCepat.css"
 import {
   FiZap,
@@ -17,24 +17,24 @@ import {
   FiCheckCircle,
   FiClock,
   FiSettings,
+  FiPower,
 } from "react-icons/fi"
 
 const KontrolCepat = () => {
   const navigate = useNavigate()
   const [devices, setDevices] = useState([])
-  const [currentDevice, setCurrentDevice] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [lastUpdate, setLastUpdate] = useState(null)
   const [message, setMessage] = useState({ type: "", text: "" })
 
-  // State untuk kontrol device
+  // State untuk kontrol device - menggunakan struktur yang lebih fleksibel
   const [controls, setControls] = useState({
-    lampu: false,
-    ventilasi: "tutup",
-    humidifier: false,
-    kipas: false,
-    pemanas: false,
+    pump1: false,
+    fan1: false,
+    light1: false,
+    heater1: false,
+    ventilation1: false,
   })
 
   useEffect(() => {
@@ -54,155 +54,199 @@ const KontrolCepat = () => {
   const fetchDeviceData = async () => {
     try {
       setLoading(true)
+      console.log("🔧 Fetching device data...")
 
-      // Coba berbagai endpoint
-      const endpoints = [`${window.location.origin}/api/device`, "http://localhost:5000/api/device", "/api/device"]
-
-      let response = null
-      let data = null
-
-      for (const endpoint of endpoints) {
-        try {
-          console.log(`🔍 Mencoba endpoint: ${endpoint}`)
-
-          // Menggunakan axios dengan konfigurasi timeout
-          response = await axios({
-            method: "GET",
-            url: endpoint,
-            headers: { "Content-Type": "application/json" },
-            timeout: 5000,
-          })
-
-          if (response.status === 200 && response.data) {
-            data = response.data
-            console.log(`✅ Berhasil dengan endpoint: ${endpoint}`, data)
-            break
-          }
-        } catch (err) {
-          console.log(`❌ Error endpoint: ${endpoint} - ${err.message}`)
-          continue
-        }
-      }
+      const data = await deviceAPI.getAll()
+      console.log("✅ Device data received:", data)
 
       if (data && Array.isArray(data) && data.length > 0) {
         setDevices(data)
-        const latestDevice = data[0] // Ambil device terbaru
-        setCurrentDevice(latestDevice)
-        setControls({
-          lampu: latestDevice.lampu || false,
-          ventilasi: latestDevice.ventilasi || "tutup",
-          humidifier: latestDevice.humidifier || false,
-          kipas: latestDevice.kipas || false,
-          pemanas: latestDevice.pemanas || false,
+
+        // Update controls berdasarkan data device yang diterima
+        const newControls = {}
+        data.forEach((device) => {
+          newControls[device.id] = device.status === "on" || device.status === "aktif"
         })
-        setLastUpdate(new Date(latestDevice.updatedAt || latestDevice.createdAt))
+        setControls(newControls)
+        setLastUpdate(new Date())
+        showMessage("success", "Data device berhasil dimuat")
       } else {
-        // Jika tidak ada data, buat device default
-        await createDefaultDevice()
+        // Jika tidak ada data dari API, gunakan device default
+        console.log("⚠️ No device data from API, using defaults")
+        setDevices(getDefaultDevices())
+        setControls({
+          pump1: false,
+          fan1: false,
+          light1: false,
+          heater1: false,
+          ventilation1: false,
+        })
+        setLastUpdate(new Date())
+        showMessage("info", "Menggunakan device default (mode demo)")
       }
     } catch (error) {
-      console.error("❌ Error mengambil data device:", error)
-      showMessage("error", "Gagal mengambil data device. Menggunakan mode demo.")
+      console.error("❌ Error fetching device data:", error)
 
-      // Set default values untuk demo
+      // Fallback ke device default
+      setDevices(getDefaultDevices())
       setControls({
-        lampu: false,
-        ventilasi: "tutup",
-        humidifier: false,
-        kipas: false,
-        pemanas: false,
+        pump1: false,
+        fan1: false,
+        light1: false,
+        heater1: false,
+        ventilation1: false,
       })
       setLastUpdate(new Date())
+      showMessage("warning", "Gagal mengambil data device. Menggunakan mode demo.")
     } finally {
       setLoading(false)
     }
   }
 
-  const createDefaultDevice = async () => {
+  const getDefaultDevices = () => {
+    return [
+      {
+        id: "pump1",
+        nama: "Pompa Air",
+        jenis: "pump",
+        status: "off",
+        deskripsi: "Pompa penyiraman otomatis",
+      },
+      {
+        id: "fan1",
+        nama: "Kipas Ventilasi",
+        jenis: "fan",
+        status: "off",
+        deskripsi: "Kipas sirkulasi udara",
+      },
+      {
+        id: "light1",
+        nama: "Lampu LED",
+        jenis: "light",
+        status: "off",
+        deskripsi: "Lampu pertumbuhan tanaman",
+      },
+      {
+        id: "heater1",
+        nama: "Pemanas",
+        jenis: "heater",
+        status: "off",
+        deskripsi: "Pemanas greenhouse",
+      },
+      {
+        id: "ventilation1",
+        nama: "Ventilasi",
+        jenis: "ventilation",
+        status: "off",
+        deskripsi: "Sistem ventilasi otomatis",
+      },
+    ]
+  }
+
+  const handleControlChange = async (deviceId, value) => {
     try {
-      const defaultData = {
-        lampu: false,
-        ventilasi: "tutup",
-        humidifier: false,
-        kipas: false,
-        pemanas: false,
-      }
+      console.log(`🎛️ Changing device ${deviceId} to ${value ? "on" : "off"}`)
 
-      // Menggunakan axios untuk POST request
-      const response = await axios({
-        method: "POST",
-        url: "/api/device",
-        headers: { "Content-Type": "application/json" },
-        data: defaultData,
-        timeout: 5000,
-      })
+      // Update state lokal dulu untuk responsiveness
+      setControls((prev) => ({
+        ...prev,
+        [deviceId]: value,
+      }))
 
-      if (response.status === 200 || response.status === 201) {
-        const newDevice = response.data
-        setCurrentDevice(newDevice.data)
-        setControls(defaultData)
+      // Coba kirim ke backend
+      try {
+        const action = value ? "on" : "off"
+        await deviceAPI.control(deviceId, action)
+
+        // Update devices state juga
+        setDevices((prev) => prev.map((device) => (device.id === deviceId ? { ...device, status: action } : device)))
+
+        showMessage("success", `${getDeviceName(deviceId)} berhasil ${value ? "dinyalakan" : "dimatikan"}`)
         setLastUpdate(new Date())
-        showMessage("success", "Device default berhasil dibuat")
+      } catch (error) {
+        console.error("❌ Failed to control device:", error)
+        showMessage("warning", `Kontrol ${getDeviceName(deviceId)} gagal. Mode demo aktif.`)
       }
     } catch (error) {
-      console.error("Error membuat device default:", error)
+      console.error("❌ Error in handleControlChange:", error)
     }
   }
 
-  const handleControlChange = (deviceName, value) => {
-    setControls((prev) => ({
-      ...prev,
-      [deviceName]: value,
-    }))
+  const getDeviceName = (deviceId) => {
+    const device = devices.find((d) => d.id === deviceId)
+    return device?.nama || deviceId
   }
 
-  const saveChanges = async () => {
-    if (!currentDevice && devices.length === 0) {
-      showMessage("error", "Tidak ada device yang tersedia")
-      return
+  const getDeviceIcon = (jenis) => {
+    switch (jenis) {
+      case "pump":
+        return FiDroplet
+      case "fan":
+        return FiWind
+      case "light":
+        return FiZap
+      case "heater":
+        return FiThermometer
+      case "ventilation":
+        return FiWind
+      default:
+        return FiPower
     }
+  }
 
+  const getDeviceColor = (jenis) => {
+    switch (jenis) {
+      case "pump":
+        return "#2196f3"
+      case "fan":
+        return "#4caf50"
+      case "light":
+        return "#ffc107"
+      case "heater":
+        return "#ff5722"
+      case "ventilation":
+        return "#00bcd4"
+      default:
+        return "#9e9e9e"
+    }
+  }
+
+  const saveAllChanges = async () => {
     try {
       setSaving(true)
+      console.log("💾 Saving all device changes...")
 
-      const deviceId = currentDevice?.id || 1 // Default ID jika tidak ada
-      const endpoint = `/api/device/${deviceId}`
+      let successCount = 0
+      let errorCount = 0
 
-      console.log("🔄 Menyimpan perubahan:", controls)
-
-      // Menggunakan axios untuk PUT request
-      const response = await axios({
-        method: "PUT",
-        url: endpoint,
-        headers: { "Content-Type": "application/json" },
-        data: controls,
-        timeout: 10000, // Timeout lebih lama untuk save operation
-      })
-
-      if (response.status === 200) {
-        const result = response.data
-        console.log("✅ Berhasil menyimpan:", result)
-
-        setCurrentDevice(result.data)
-        setLastUpdate(new Date())
-        showMessage("success", "Pengaturan device berhasil disimpan!")
-
-        // Refresh data setelah 1 detik
-        setTimeout(() => {
-          fetchDeviceData()
-        }, 1000)
-      } else {
-        throw new Error(`HTTP ${response.status}`)
+      // Simpan semua perubahan
+      for (const [deviceId, isOn] of Object.entries(controls)) {
+        try {
+          const action = isOn ? "on" : "off"
+          await deviceAPI.control(deviceId, action)
+          successCount++
+        } catch (error) {
+          console.error(`❌ Failed to save ${deviceId}:`, error)
+          errorCount++
+        }
       }
-    } catch (error) {
-      console.error("❌ Error menyimpan:", error)
-      showMessage("error", "Gagal menyimpan pengaturan. Mode demo aktif.")
 
-      // Simulasi berhasil untuk demo
+      if (successCount > 0) {
+        showMessage("success", `${successCount} perangkat berhasil disimpan`)
+      }
+      if (errorCount > 0) {
+        showMessage("warning", `${errorCount} perangkat gagal disimpan (mode demo)`)
+      }
+
       setLastUpdate(new Date())
+
+      // Refresh data setelah save
       setTimeout(() => {
-        showMessage("success", "Pengaturan tersimpan (mode demo)")
-      }, 500)
+        fetchDeviceData()
+      }, 1000)
+    } catch (error) {
+      console.error("❌ Error saving changes:", error)
+      showMessage("error", "Gagal menyimpan perubahan")
     } finally {
       setSaving(false)
     }
@@ -229,54 +273,6 @@ const KontrolCepat = () => {
 
     return date.toLocaleString("id-ID")
   }
-
-  // Konfigurasi device
-  const deviceConfigs = [
-    {
-      key: "lampu",
-      title: "Lampu LED",
-      icon: FiZap,
-      color: "#ffc107",
-      type: "toggle",
-      description: "Kontrol pencahayaan greenhouse",
-    },
-    {
-      key: "ventilasi",
-      title: "Ventilasi",
-      icon: FiWind,
-      color: "#2196f3",
-      type: "select",
-      options: [
-        { value: "tutup", label: "Tutup" },
-        { value: "buka", label: "Buka" },
-      ],
-      description: "Kontrol sirkulasi udara",
-    },
-    {
-      key: "humidifier",
-      title: "Humidifier",
-      icon: FiDroplet,
-      color: "#00bcd4",
-      type: "toggle",
-      description: "Kontrol kelembapan udara",
-    },
-    {
-      key: "kipas",
-      title: "Kipas",
-      icon: FiWind,
-      color: "#4caf50", // Warna hijau, beda dengan ventilasi yang biru
-      type: "toggle",
-      description: "Kontrol sirkulasi udara internal",
-    },
-    {
-      key: "pemanas",
-      title: "Pemanas",
-      icon: FiThermometer,
-      color: "#ff5722",
-      type: "toggle",
-      description: "Kontrol suhu greenhouse",
-    },
-  ]
 
   if (loading) {
     return (
@@ -340,32 +336,23 @@ const KontrolCepat = () => {
             Status Perangkat Saat Ini
           </h2>
           <div className="status-grid">
-            {deviceConfigs.map((device) => (
-              <div key={device.key} className="status-card" style={{ "--device-color": device.color }}>
-                <div className="status-header">
-                  <device.icon className="status-icon" />
-                  <div
-                    className={`status-indicator ${
-                      device.type === "toggle"
-                        ? controls[device.key]
-                          ? "active"
-                          : "inactive"
-                        : controls[device.key] === "buka"
-                          ? "active"
-                          : "inactive"
-                    }`}
-                  >
-                    {device.type === "toggle"
-                      ? controls[device.key]
-                        ? "ON"
-                        : "OFF"
-                      : controls[device.key].toUpperCase()}
+            {devices.map((device) => {
+              const IconComponent = getDeviceIcon(device.jenis)
+              const isActive = controls[device.id]
+
+              return (
+                <div key={device.id} className="status-card" style={{ "--device-color": getDeviceColor(device.jenis) }}>
+                  <div className="status-header">
+                    <IconComponent className="status-icon" />
+                    <div className={`status-indicator ${isActive ? "active" : "inactive"}`}>
+                      {isActive ? "ON" : "OFF"}
+                    </div>
                   </div>
+                  <h3>{device.nama}</h3>
+                  <p>{device.deskripsi}</p>
                 </div>
-                <h3>{device.title}</h3>
-                <p>{device.description}</p>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </section>
 
@@ -380,71 +367,50 @@ const KontrolCepat = () => {
           </div>
 
           <div className="control-grid">
-            {deviceConfigs.map((device) => (
-              <div key={device.key} className="control-card" style={{ "--device-color": device.color }}>
-                <div className="control-header">
-                  <div className="device-info">
-                    <device.icon className="device-icon" />
-                    <div>
-                      <h3>{device.title}</h3>
-                      <p>{device.description}</p>
+            {devices.map((device) => {
+              const IconComponent = getDeviceIcon(device.jenis)
+              const isActive = controls[device.id]
+
+              return (
+                <div
+                  key={device.id}
+                  className="control-card"
+                  style={{ "--device-color": getDeviceColor(device.jenis) }}
+                >
+                  <div className="control-header">
+                    <div className="device-info">
+                      <IconComponent className="device-icon" />
+                      <div>
+                        <h3>{device.nama}</h3>
+                        <p>{device.deskripsi}</p>
+                      </div>
+                    </div>
+                    <div className={`current-status ${isActive ? "active" : "inactive"}`}>
+                      {isActive ? "ON" : "OFF"}
                     </div>
                   </div>
-                  <div
-                    className={`current-status ${
-                      device.type === "toggle"
-                        ? controls[device.key]
-                          ? "active"
-                          : "inactive"
-                        : controls[device.key] === "buka"
-                          ? "active"
-                          : "inactive"
-                    }`}
-                  >
-                    {device.type === "toggle"
-                      ? controls[device.key]
-                        ? "ON"
-                        : "OFF"
-                      : controls[device.key].toUpperCase()}
-                  </div>
-                </div>
 
-                <div className="control-input">
-                  {device.type === "toggle" ? (
+                  <div className="control-input">
                     <div className="toggle-container">
                       <label className="toggle-switch">
                         <input
                           type="checkbox"
-                          checked={controls[device.key]}
-                          onChange={(e) => handleControlChange(device.key, e.target.checked)}
+                          checked={isActive}
+                          onChange={(e) => handleControlChange(device.id, e.target.checked)}
                         />
                         <span className="toggle-slider"></span>
                       </label>
-                      <span className="toggle-label">{controls[device.key] ? "Aktif" : "Nonaktif"}</span>
+                      <span className="toggle-label">{isActive ? "Aktif" : "Nonaktif"}</span>
                     </div>
-                  ) : (
-                    <div className="select-container">
-                      <select
-                        value={controls[device.key]}
-                        onChange={(e) => handleControlChange(device.key, e.target.value)}
-                        className="control-select"
-                      >
-                        {device.options.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
 
           {/* Save Button */}
           <div className="save-section">
-            <button onClick={saveChanges} className={`save-btn ${saving ? "saving" : ""}`} disabled={saving}>
+            <button onClick={saveAllChanges} className={`save-btn ${saving ? "saving" : ""}`} disabled={saving}>
               {saving ? (
                 <>
                   <FiRefreshCw className="spinning" />
@@ -453,7 +419,7 @@ const KontrolCepat = () => {
               ) : (
                 <>
                   <FiSave />
-                  <span>Simpan Pengaturan</span>
+                  <span>Simpan Semua Pengaturan</span>
                 </>
               )}
             </button>
