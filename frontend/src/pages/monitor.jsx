@@ -1,9 +1,9 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import "../styles/Monitoring.css"
 import { useNavigate } from "react-router-dom"
-import { sensorAPI } from "../utils/api"
+import axios from "axios"
+import "../styles/Monitoring.css"
 import {
   FiArrowLeft,
   FiThermometer,
@@ -16,11 +16,13 @@ import {
   FiRefreshCw,
   FiWifi,
   FiWifiOff,
+  FiTrendingUp,
+  FiTrendingDown,
   FiMinus,
   FiAlertCircle,
 } from "react-icons/fi"
 
-export default function Monitoring() {
+const Monitoring = () => {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [isOnline, setIsOnline] = useState(true)
@@ -49,20 +51,57 @@ export default function Monitoring() {
   const fetchMonitoringData = async () => {
     try {
       setLoading(true)
-      console.log("🔍 Fetching monitoring data...")
 
-      // Gunakan sensorAPI yang sudah berjalan
-      const sensorData = await sensorAPI.getLatest()
-      console.log("✅ Sensor data received:", sensorData)
+      // Coba endpoint monitoring terlebih dahulu, jika gagal gunakan data sensor
+      const endpoints = [
+        "/api/monitoring",
+        "http://localhost:5000/api/monitoring",
+        "/api/data-sensor/latest",
+        "http://localhost:5000/api/data-sensor/latest",
+      ]
 
-      if (sensorData) {
-        // Buat analisis dari data sensor
-        const analysisData = analyzeData(sensorData)
-        setData(analysisData)
+      let response = null
+      let fetchedData = null
+
+      // Coba setiap endpoint sampai ada yang berhasil
+      for (const endpoint of endpoints) {
+        try {
+          console.log(`🔍 Mencoba endpoint monitoring: ${endpoint}`)
+
+          // Menggunakan axios dengan timeout 5 detik
+          response = await axios({
+            method: "GET",
+            url: endpoint,
+            timeout: 5000,
+            headers: {
+              "Content-Type": "application/json",
+            },
+          })
+
+          if (response.status === 200 && response.data) {
+            fetchedData = response.data
+            console.log(`✅ Berhasil mengambil data dari: ${endpoint}`)
+            break
+          }
+        } catch (err) {
+          console.log(`❌ Gagal endpoint: ${endpoint} - ${err.message}`)
+          continue
+        }
+      }
+
+      if (fetchedData) {
+        // Jika data dari endpoint monitoring (sudah ada analisis)
+        if (fetchedData.status && fetchedData.rekomendasi) {
+          setData(fetchedData)
+        } else {
+          // Jika data dari data sensor, buat analisis sendiri
+          const analysisData = analyzeData(fetchedData)
+          setData(analysisData)
+        }
         setIsOnline(true)
         setLastUpdate(new Date())
       } else {
-        throw new Error("Tidak ada data sensor")
+        throw new Error("Tidak ada endpoint yang tersedia")
       }
     } catch (error) {
       console.error("❌ Error mengambil data monitoring:", error)
@@ -86,8 +125,8 @@ export default function Monitoring() {
   // Fungsi untuk menganalisis data sensor dan memberikan rekomendasi
   const analyzeData = (sensorData) => {
     const suhu = sensorData.suhu
-    const kelembapan_udara = sensorData.kelembapan_udara
-    const kelembapan_tanah = sensorData.kelembapan_tanah
+    const kelembapan_udara = sensorData.kelembapan_udara || sensorData.kelembapan // fallback untuk data lama
+    const kelembapan_tanah = sensorData.kelembapan_tanah || sensorData.kelembapan // fallback untuk data lama
     const cahaya = sensorData.cahaya
 
     const status = []
@@ -139,6 +178,7 @@ export default function Monitoring() {
     const isDayTime = hour >= 6 && hour <= 18
 
     if (isDayTime) {
+      // Analisis untuk siang hari
       if (cahaya < 500) {
         status.push("Cahaya kurang untuk siang hari")
         rekomendasi.push("Aktifkan lampu tambahan")
@@ -151,6 +191,7 @@ export default function Monitoring() {
         status.push("Cahaya cukup")
       }
     } else {
+      // Analisis untuk malam hari
       if (cahaya > 200) {
         status.push("Cahaya terlalu terang untuk malam hari")
         rekomendasi.push("Matikan lampu yang tidak perlu")
@@ -178,10 +219,38 @@ export default function Monitoring() {
   // Fungsi untuk mendapatkan ikon status berdasarkan teks
   const getStatusIcon = (statusText) => {
     const text = statusText.toLowerCase()
-    if (text.includes("optimal")) return <FiCheckCircle className="text-green-500" />
-    if (text.includes("terlalu") || text.includes("kurang")) return <FiAlertTriangle className="text-yellow-500" />
-    if (text.includes("error")) return <FiAlertCircle className="text-red-500" />
-    return <FiMinus className="text-gray-500" />
+    if (text.includes("optimal")) return <FiCheckCircle className="status-icon optimal" />
+    if (text.includes("terlalu") || text.includes("kurang")) return <FiAlertTriangle className="status-icon warning" />
+    if (text.includes("error")) return <FiAlertCircle className="status-icon error" />
+    return <FiMinus className="status-icon normal" />
+  }
+
+  // Fungsi untuk mendapatkan class CSS berdasarkan status
+  const getStatusClass = (statusText) => {
+    const text = statusText.toLowerCase()
+    if (text.includes("optimal")) return "optimal"
+    if (text.includes("terlalu") || text.includes("kurang")) return "warning"
+    if (text.includes("error")) return "error"
+    return "normal"
+  }
+
+  // Fungsi untuk mendapatkan ikon trend berdasarkan nilai
+  const getTrendIcon = (value, type) => {
+    // Simulasi trend berdasarkan nilai (bisa diganti dengan data historis)
+    if (type === "suhu") {
+      if (value > 28) return <FiTrendingUp className="trend-up" />
+      if (value < 22) return <FiTrendingDown className="trend-down" />
+    } else if (type === "kelembapan_udara") {
+      if (value > 75) return <FiTrendingUp className="trend-up" />
+      if (value < 45) return <FiTrendingDown className="trend-down" />
+    } else if (type === "kelembapan_tanah") {
+      if (value > 65) return <FiTrendingUp className="trend-up" />
+      if (value < 35) return <FiTrendingDown className="trend-down" />
+    } else if (type === "cahaya") {
+      if (value > 1000) return <FiTrendingUp className="trend-up" />
+      if (value < 600) return <FiTrendingDown className="trend-down" />
+    }
+    return <FiMinus className="trend-stable" />
   }
 
   // Fungsi untuk format waktu update terakhir
@@ -203,9 +272,9 @@ export default function Monitoring() {
   // Loading state
   if (!data) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+      <div className="monitoring-body">
+        <div className="loading-container">
+          <div className="loading-spinner"></div>
           <p>Memuat data monitoring...</p>
         </div>
       </div>
@@ -222,166 +291,183 @@ export default function Monitoring() {
   const hasOptimal = statusList.some((s) => s.toLowerCase().includes("optimal"))
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="monitoring-body">
       {/* Header */}
-      <div className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between py-4">
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => navigate("/dashboard")}
-                className="flex items-center space-x-2 text-gray-600 hover:text-gray-900"
-              >
-                <FiArrowLeft />
-                <span>Kembali ke Dashboard</span>
-              </button>
-            </div>
+      <header className="monitoring-header">
+        <button className="back-button" onClick={() => navigate("/dashboard")}>
+          <FiArrowLeft className="back-icon" />
+          <span>Kembali ke Dashboard</span>
+        </button>
 
-            <div className="text-center">
-              <h1 className="text-2xl font-bold text-gray-900 flex items-center">
-                <FiActivity className="mr-2" />
-                Monitoring Greenhouse
-              </h1>
-              <p className="text-gray-600">Analisis kondisi dan rekomendasi real-time</p>
-            </div>
+        <div className="header-content">
+          <div className="header-title">
+            <FiActivity className="header-icon" />
+            <h1>Monitoring Greenhouse</h1>
+          </div>
+          <p>Analisis kondisi dan rekomendasi real-time</p>
+        </div>
 
-            <div className="flex items-center space-x-4">
-              <div className={`flex items-center space-x-2 ${isOnline ? "text-green-600" : "text-red-600"}`}>
-                {isOnline ? <FiWifi /> : <FiWifiOff />}
-                <span className="text-sm">{isOnline ? "Online" : "Offline"}</span>
-              </div>
-              <div className="flex items-center space-x-2 text-gray-600">
-                <FiClock />
-                <span className="text-sm">Update: {formatLastUpdate(lastUpdate)}</span>
-              </div>
+        <div className="header-status">
+          <div className="connection-status">
+            <div className={`status-indicator ${isOnline ? "online" : "offline"}`}>
+              {isOnline ? <FiWifi /> : <FiWifiOff />}
+              <span>{isOnline ? "Terhubung" : "Offline"}</span>
             </div>
           </div>
+          <div className="last-update">
+            <FiClock />
+            <span>Update: {formatLastUpdate(lastUpdate)}</span>
+          </div>
         </div>
-      </div>
+      </header>
 
-      <div className="max-w-7xl mx-auto p-4">
+      {/* Main Content */}
+      <main className="monitoring-main">
         {/* Sensor Data Cards */}
-        <div className="mb-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
-            <FiThermometer className="mr-2" />
+        <section className="sensor-section">
+          <h2>
+            <FiThermometer className="section-icon" />
             Data Sensor Terkini
           </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="sensor-grid">
             {/* Card Suhu */}
-            <div className="bg-white rounded-lg shadow-sm p-6">
-              <div className="flex items-center justify-between mb-4">
-                <FiThermometer className="text-red-500 text-2xl" />
-                <div className="text-right">
-                  <div className="text-2xl font-bold text-gray-900">{data.suhu}°C</div>
-                  <div className="text-sm text-gray-500">Optimal: 20-30°C</div>
-                </div>
+            <div className="sensor-card temperature">
+              <div className="card-header">
+                <FiThermometer className="card-icon" />
+                <div className="card-trend">{getTrendIcon(data.suhu, "suhu")}</div>
               </div>
-              <h3 className="font-medium text-gray-900">Suhu</h3>
+              <div className="card-body">
+                <h3>Suhu</h3>
+                <div className="card-value">{data.suhu}°C</div>
+                <div className="card-range">Optimal: 20-30°C</div>
+              </div>
             </div>
 
             {/* Card Kelembapan Udara */}
-            <div className="bg-white rounded-lg shadow-sm p-6">
-              <div className="flex items-center justify-between mb-4">
-                <FiDroplet className="text-blue-500 text-2xl" />
-                <div className="text-right">
-                  <div className="text-2xl font-bold text-gray-900">{data.kelembapan_udara}%</div>
-                  <div className="text-sm text-gray-500">Optimal: 50-70%</div>
-                </div>
+            <div className="sensor-card humidity-air">
+              <div className="card-header">
+                <FiDroplet className="card-icon" />
+                <div className="card-trend">{getTrendIcon(data.kelembapan_udara, "kelembapan_udara")}</div>
               </div>
-              <h3 className="font-medium text-gray-900">Kelembapan Udara</h3>
+              <div className="card-body">
+                <h3>Kelembapan Udara</h3>
+                <div className="card-value">{data.kelembapan_udara}%</div>
+                <div className="card-range">Optimal: 50-70%</div>
+              </div>
             </div>
 
             {/* Card Kelembapan Tanah */}
-            <div className="bg-white rounded-lg shadow-sm p-6">
-              <div className="flex items-center justify-between mb-4">
-                <FiDroplet className="text-green-500 text-2xl" />
-                <div className="text-right">
-                  <div className="text-2xl font-bold text-gray-900">{data.kelembapan_tanah}%</div>
-                  <div className="text-sm text-gray-500">Optimal: 40-60%</div>
-                </div>
+            <div className="sensor-card humidity-soil">
+              <div className="card-header">
+                <FiDroplet className="card-icon" />
+                <div className="card-trend">{getTrendIcon(data.kelembapan_tanah, "kelembapan_tanah")}</div>
               </div>
-              <h3 className="font-medium text-gray-900">Kelembapan Tanah</h3>
+              <div className="card-body">
+                <h3>Kelembapan Tanah</h3>
+                <div className="card-value">{data.kelembapan_tanah}%</div>
+                <div className="card-range">Optimal: 40-60%</div>
+              </div>
             </div>
 
             {/* Card Cahaya */}
-            <div className="bg-white rounded-lg shadow-sm p-6">
-              <div className="flex items-center justify-between mb-4">
-                <FiSun className="text-yellow-500 text-2xl" />
-                <div className="text-right">
-                  <div className="text-2xl font-bold text-gray-900">{data.cahaya} lux</div>
-                  <div className="text-sm text-gray-500">Optimal: 800-1200 lux</div>
-                </div>
+            <div className="sensor-card light">
+              <div className="card-header">
+                <FiSun className="card-icon" />
+                <div className="card-trend">{getTrendIcon(data.cahaya, "cahaya")}</div>
               </div>
-              <h3 className="font-medium text-gray-900">Cahaya</h3>
+              <div className="card-body">
+                <h3>Cahaya</h3>
+                <div className="card-value">{data.cahaya} lux</div>
+                <div className="card-range">Optimal: 800-1200 lux</div>
+              </div>
+            </div>
+
+            {/* Card Waktu Update */}
+            <div className="sensor-card time">
+              <div className="card-header">
+                <FiClock className="card-icon" />
+              </div>
+              <div className="card-body">
+                <h3>Waktu Update</h3>
+                <div className="card-value">{new Date(data.waktu).toLocaleTimeString("id-ID")}</div>
+                <div className="card-range">{new Date(data.waktu).toLocaleDateString("id-ID")}</div>
+              </div>
             </div>
           </div>
-        </div>
+        </section>
 
         {/* Status Analysis */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-                <FiActivity className="mr-2" />
-                Analisis Status
-              </h3>
-              <button
-                onClick={fetchMonitoringData}
-                disabled={loading}
-                className="flex items-center space-x-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-              >
-                <FiRefreshCw className={loading ? "animate-spin" : ""} />
+        <section className="status-section">
+          <h2>
+            <FiActivity className="section-icon" />
+            Analisis Status
+          </h2>
+
+          <div
+            className={`status-container ${
+              hasError ? "status-error" : hasAlert ? "status-warning" : hasOptimal ? "status-optimal" : "status-normal"
+            }`}
+          >
+            <div className="status-header">
+              <div className="status-title">
+                {hasError ? (
+                  <FiAlertCircle className="status-main-icon error" />
+                ) : hasAlert ? (
+                  <FiAlertTriangle className="status-main-icon warning" />
+                ) : hasOptimal ? (
+                  <FiCheckCircle className="status-main-icon optimal" />
+                ) : (
+                  <FiMinus className="status-main-icon normal" />
+                )}
+                <h3>
+                  {hasError
+                    ? "Sistem Error"
+                    : hasAlert
+                      ? "Perlu Perhatian"
+                      : hasOptimal
+                        ? "Kondisi Optimal"
+                        : "Kondisi Normal"}
+                </h3>
+              </div>
+              <button className="refresh-btn" onClick={fetchMonitoringData} disabled={loading}>
+                <FiRefreshCw className={loading ? "spinning" : ""} />
                 <span>{loading ? "Memuat..." : "Refresh"}</span>
               </button>
             </div>
 
-            <div className="space-y-3">
+            <div className="status-list">
               {statusList.map((status, index) => (
-                <div key={index} className="flex items-center space-x-3">
+                <div key={index} className={`status-item ${getStatusClass(status)}`}>
                   {getStatusIcon(status)}
-                  <span className="text-gray-700">{status}</span>
+                  <span>{status}</span>
                 </div>
               ))}
             </div>
           </div>
-
-          {/* Waktu Update */}
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <FiClock className="mr-2" />
-              Waktu Update
-            </h3>
-            <div className="space-y-2">
-              <div className="text-2xl font-bold text-gray-900">
-                {data.waktu ? new Date(data.waktu).toLocaleTimeString("id-ID") : "Tidak ada data"}
-              </div>
-              <div className="text-gray-500">
-                {data.waktu ? new Date(data.waktu).toLocaleDateString("id-ID") : "Tidak ada data"}
-              </div>
-            </div>
-          </div>
-        </div>
+        </section>
 
         {/* Recommendations */}
-        <div className="bg-white rounded-lg shadow-sm p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-            <FiCheckCircle className="mr-2" />
+        <section className="recommendation-section">
+          <h2>
+            <FiCheckCircle className="section-icon" />
             Rekomendasi Tindakan
-          </h3>
+          </h2>
 
-          <div className="space-y-3">
+          <div className="recommendation-container">
             {rekomendasiList.map((rekomendasi, index) => (
-              <div key={index} className="flex items-start space-x-3">
-                <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-medium">
-                  {index + 1}
-                </span>
-                <span className="text-gray-700">{rekomendasi}</span>
+              <div key={index} className="recommendation-item">
+                <div className="recommendation-number">{index + 1}</div>
+                <div className="recommendation-content">
+                  <p>{rekomendasi}</p>
+                </div>
               </div>
             ))}
           </div>
-        </div>
-      </div>
+        </section>
+      </main>
     </div>
   )
 }
+
+export default Monitoring
