@@ -22,14 +22,14 @@ const monitoringRoutes = require("./routes/monitoring")
 const prediksiRoutes = require("./routes/prediksi")
 
 const app = express()
-const PORT = process.env.PORT || 8080 // Railway menggunakan port 8080
+const PORT = process.env.PORT || 8080
 
 // Debug CORS configuration
 console.log("🔍 CORS Configuration Debug:")
 console.log("NODE_ENV:", process.env.NODE_ENV)
 console.log("PORT:", PORT)
 
-// PERBAIKAN CORS - Tambahkan lebih banyak origin yang diizinkan
+// PERBAIKAN CORS - Tambahkan pattern untuk semua URL Vercel
 const allowedOrigins = [
   // Production URLs
   "https://monitoring-greenhouse-4ulk.vercel.app",
@@ -44,46 +44,72 @@ const allowedOrigins = [
   "http://127.0.0.1:5173",
   "http://127.0.0.1:4173",
 
-  // Railway internal
+  // Railway URLs
+  "https://monitoring-greenhouse-production.up.railway.app",
   "https://*.up.railway.app",
   "https://*.railway.app",
 ]
 
-console.log("✅ Allowed CORS origins:", allowedOrigins)
+// Fungsi untuk check apakah origin diizinkan
+const isOriginAllowed = (origin) => {
+  if (!origin) return true // Allow requests with no origin (mobile apps, curl, etc.)
+
+  // Check exact matches first
+  if (allowedOrigins.includes(origin)) {
+    return true
+  }
+
+  // Check Vercel patterns - semua subdomain vercel.app
+  if (origin.includes(".vercel.app")) {
+    console.log("✅ CORS: Allowing Vercel domain:", origin)
+    return true
+  }
+
+  // Check Railway patterns
+  if (origin.includes(".railway.app") || origin.includes(".up.railway.app")) {
+    console.log("✅ CORS: Allowing Railway domain:", origin)
+    return true
+  }
+
+  // Check localhost patterns
+  if (origin.includes("localhost") || origin.includes("127.0.0.1")) {
+    console.log("✅ CORS: Allowing localhost:", origin)
+    return true
+  }
+
+  return false
+}
+
+console.log("✅ CORS will allow:")
+console.log("- All *.vercel.app domains")
+console.log("- All *.railway.app domains")
+console.log("- All localhost/127.0.0.1 domains")
+console.log("- Specific allowed origins:", allowedOrigins)
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (mobile apps, curl, etc.)
-      if (!origin) return callback(null, true)
+      console.log("🔍 CORS Check for origin:", origin)
 
-      // Check if origin is in allowed list or matches pattern
-      const isAllowed = allowedOrigins.some((allowedOrigin) => {
-        if (allowedOrigin.includes("*")) {
-          // Handle wildcard patterns
-          const pattern = allowedOrigin.replace(/\*/g, ".*")
-          const regex = new RegExp(pattern)
-          return regex.test(origin)
-        }
-        return allowedOrigin === origin
-      })
-
-      if (isAllowed) {
+      if (isOriginAllowed(origin)) {
         console.log("✅ CORS: Allowed origin:", origin)
         callback(null, true)
       } else {
         console.log("❌ CORS: Blocked origin:", origin)
+        console.log("💡 To allow this origin, add it to the allowedOrigins list or update the pattern matching")
         callback(new Error("Not allowed by CORS"))
       }
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
     exposedHeaders: ["Content-Range", "X-Content-Range"],
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
   }),
 )
 
-// Add preflight handling
+// Add preflight handling untuk semua routes
 app.options("*", cors())
 
 app.use(express.json({ limit: "10mb" }))
@@ -91,10 +117,18 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }))
 
 // Request logging middleware untuk debugging
 app.use((req, res, next) => {
-  console.log(`📡 ${new Date().toISOString()} - ${req.method} ${req.path}`)
-  console.log("- Origin:", req.get("Origin"))
-  console.log("- User-Agent:", req.get("User-Agent"))
-  console.log("- Headers:", JSON.stringify(req.headers, null, 2))
+  const timestamp = new Date().toISOString()
+  console.log(`📡 ${timestamp} - ${req.method} ${req.path}`)
+  console.log("- Origin:", req.get("Origin") || "No Origin")
+  console.log("- User-Agent:", req.get("User-Agent") || "No User-Agent")
+  console.log("- Referer:", req.get("Referer") || "No Referer")
+
+  // Log semua headers untuk debugging
+  if (req.method === "OPTIONS") {
+    console.log("🔍 PREFLIGHT REQUEST HEADERS:")
+    console.log(JSON.stringify(req.headers, null, 2))
+  }
+
   next()
 })
 
@@ -106,7 +140,7 @@ app.use("/api/device", deviceRoutes)
 app.use("/api/monitoring", monitoringRoutes)
 app.use("/api/prediksi", prediksiRoutes)
 
-// PERBAIKAN: Tambahkan health check endpoint yang lebih robust
+// Health check endpoint yang lebih robust
 app.get("/api/health", async (req, res) => {
   try {
     // Test database connection
@@ -120,6 +154,13 @@ app.get("/api/health", async (req, res) => {
       database: "connected",
       port: PORT,
       uptime: process.uptime(),
+      cors: {
+        enabled: true,
+        requestOrigin: req.get("Origin"),
+        allowsVercel: true,
+        allowsRailway: true,
+        allowsLocalhost: true,
+      },
       version: "1.0.0",
     })
   } catch (error) {
@@ -133,10 +174,9 @@ app.get("/api/health", async (req, res) => {
   }
 })
 
-// Root endpoint - lebih informatif
+// Root endpoint
 app.get("/", async (req, res) => {
   try {
-    // Test database connection
     await sequelize.authenticate()
 
     res.json({
@@ -146,6 +186,12 @@ app.get("/", async (req, res) => {
       environment: process.env.NODE_ENV || "development",
       database: "✅ Connected",
       port: PORT,
+      requestInfo: {
+        origin: req.get("Origin"),
+        userAgent: req.get("User-Agent"),
+        method: req.method,
+        path: req.path,
+      },
       endpoints: {
         health: "/api/health",
         auth: "/api/auth",
@@ -157,7 +203,10 @@ app.get("/", async (req, res) => {
       },
       cors: {
         enabled: true,
-        allowedOrigins: allowedOrigins,
+        allowsAllVercelDomains: true,
+        allowsAllRailwayDomains: true,
+        allowsLocalhost: true,
+        requestOrigin: req.get("Origin"),
       },
       version: "1.0.0",
     })
@@ -177,6 +226,7 @@ app.get("/api", (req, res) => {
   res.json({
     message: "Greenhouse Monitoring API Endpoints",
     baseUrl: req.protocol + "://" + req.get("host"),
+    requestOrigin: req.get("Origin"),
     endpoints: [
       { path: "/api/health", methods: ["GET"], description: "Health check" },
       { path: "/api/auth/login", methods: ["POST"], description: "User login" },
@@ -190,7 +240,9 @@ app.get("/api", (req, res) => {
     ],
     cors: {
       enabled: true,
-      allowedOrigins: allowedOrigins,
+      allowsAllVercelDomains: true,
+      allowsAllRailwayDomains: true,
+      allowsLocalhost: true,
     },
     timestamp: new Date().toISOString(),
   })
@@ -206,7 +258,8 @@ app.use((err, req, res, next) => {
       error: "CORS Error",
       message: "Origin not allowed by CORS policy",
       origin: req.get("Origin"),
-      allowedOrigins: allowedOrigins,
+      solution: "This origin is not in the allowed list. Contact the API administrator to add this domain.",
+      allowedPatterns: ["*.vercel.app", "*.railway.app", "localhost:*", "127.0.0.1:*"],
       timestamp: new Date().toISOString(),
     })
   }
@@ -221,10 +274,13 @@ app.use((err, req, res, next) => {
 // 404 handler
 app.use("*", (req, res) => {
   console.log(`❌ 404 - Route not found: ${req.method} ${req.originalUrl}`)
+  console.log(`- Origin: ${req.get("Origin")}`)
+
   res.status(404).json({
     error: "Route not found",
     path: req.originalUrl,
     method: req.method,
+    origin: req.get("Origin"),
     message: "The requested endpoint does not exist",
     availableEndpoints: [
       "/",
@@ -248,20 +304,18 @@ let sensorInterval
 
 function startSensorSimulation() {
   if (process.env.ENABLE_SENSOR_SIMULATION !== "false") {
-    // Default enabled
     console.log("🚀 Starting sensor simulation...")
 
     sensorInterval = setInterval(async () => {
       try {
-        // Simulasi data sensor realistis
         const currentHour = new Date().getHours()
         const isDay = currentHour >= 6 && currentHour <= 18
 
         const sensorData = {
-          suhu: isDay ? 22 + Math.random() * 8 : 18 + Math.random() * 4, // 22-30°C siang, 18-22°C malam
-          cahaya: isDay ? 400 + Math.random() * 600 : 0 + Math.random() * 50, // Terang siang, gelap malam
-          kelembapan_udara: 60 + Math.random() * 30, // 60-90%
-          kelembapan_tanah: 30 + Math.random() * 40, // 30-70%
+          suhu: isDay ? 22 + Math.random() * 8 : 18 + Math.random() * 4,
+          cahaya: isDay ? 400 + Math.random() * 600 : 0 + Math.random() * 50,
+          kelembapan_udara: 60 + Math.random() * 30,
+          kelembapan_tanah: 30 + Math.random() * 40,
           waktu: new Date(),
         }
 
@@ -275,7 +329,7 @@ function startSensorSimulation() {
       } catch (error) {
         console.error("❌ Sensor simulation error:", error.message)
       }
-    }, 30000) // 30 detik
+    }, 30000)
   } else {
     console.log("⏸️ Sensor simulation disabled")
   }
@@ -291,36 +345,29 @@ function stopSensorSimulation() {
 // Database connection and server startup
 async function startServer() {
   try {
-    // Debug MySQL connection
     console.log("🔍 Railway MySQL Connection Debug:")
     console.log("MYSQL_URL:", process.env.MYSQL_URL ? "Found" : "Not found")
     console.log("DATABASE_URL:", process.env.DATABASE_URL ? "Found" : "Not found")
-    console.log("MYSQL_HOST:", process.env.MYSQL_HOST ? "Found" : "Not found")
-    console.log("MYSQL_USER:", process.env.MYSQL_USER ? "Found" : "Not found")
-    console.log("MYSQL_DATABASE:", process.env.MYSQL_DATABASE ? "Found" : "Not found")
 
     console.log("🔄 Connecting to database...")
     await sequelize.authenticate()
     console.log("✅ Database connection established successfully")
 
-    // Sync database models
     console.log("🔄 Synchronizing database models...")
     await sequelize.sync({
       alter: process.env.NODE_ENV === "development",
-      force: false, // NEVER use force: true in production
+      force: false,
     })
     console.log("✅ Database models synchronized")
 
-    // Start server
     app.listen(PORT, "0.0.0.0", () => {
-      // Bind to all interfaces
       console.log(`🚀 Server running on port ${PORT}`)
       console.log(`🌍 Environment: ${process.env.NODE_ENV || "development"}`)
       console.log(`🌱 Greenhouse Monitoring API started successfully`)
-      console.log(`📡 API URL: http://localhost:${PORT}`)
+      console.log(`📡 Local URL: http://localhost:${PORT}`)
       console.log(`🔗 External URL: https://monitoring-greenhouse-production.up.railway.app`)
+      console.log(`✅ CORS configured to allow all *.vercel.app domains`)
 
-      // Start sensor simulation if enabled
       startSensorSimulation()
     })
   } catch (error) {
@@ -349,7 +396,6 @@ process.on("SIGINT", () => {
   })
 })
 
-// Handle unhandled promise rejections
 process.on("unhandledRejection", (err) => {
   console.error("❌ Unhandled Promise Rejection:", err)
   stopSensorSimulation()
