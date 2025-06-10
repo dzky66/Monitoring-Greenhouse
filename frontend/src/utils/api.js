@@ -74,8 +74,23 @@ apiClient.interceptors.response.use(
       if (status === 404) {
         throw new Error(`Endpoint tidak ditemukan: ${error.config.url}`)
       } else if (status === 401) {
-        clearAuthData()
-        throw new Error("Sesi Anda telah berakhir. Silakan login kembali.")
+        // PERBAIKAN: Jangan auto-clear auth data untuk login request
+        const isLoginRequest = error.config.url?.includes("/login") || error.config.url?.includes("/auth/login")
+
+        if (!isLoginRequest) {
+          clearAuthData()
+        }
+
+        // Jangan auto-redirect jika sedang di halaman login
+        if (!isLoginRequest && window.location.pathname !== "/login") {
+          setTimeout(() => {
+            window.location.href = "/login"
+          }, 1000)
+        }
+
+        throw new Error(
+          isLoginRequest ? "Username atau password salah" : "Sesi Anda telah berakhir. Silakan login kembali.",
+        )
       } else if (status === 403) {
         throw new Error("Akses ditolak. Periksa konfigurasi CORS.")
       } else if (status >= 500) {

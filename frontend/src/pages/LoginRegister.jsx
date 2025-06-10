@@ -21,6 +21,9 @@ import {
   FiMail,
 } from "react-icons/fi"
 
+// Tambahkan import ConnectionTest di bagian atas:
+import ConnectionTest from "./ConnectionTest"
+
 export default function LoginRegister() {
   const navigate = useNavigate()
   const [isLogin, setIsLogin] = useState(true)
@@ -126,14 +129,20 @@ export default function LoginRegister() {
     try {
       if (isLogin) {
         console.log("🔐 Attempting login to Railway backend...")
+        console.log(
+          "- Backend URL:",
+          import.meta.env.VITE_API_URL || "https://monitoring-greenhouse-production.up.railway.app",
+        )
+        console.log("- Username:", formData.username)
 
         const response = await authAPI.login({
           username: formData.username,
           password: formData.password,
         })
 
+        console.log("✅ Login response received:", response)
+
         setSuccessMessage("Login berhasil! Mengalihkan ke dashboard...")
-        console.log("✅ Login successful, redirecting...")
 
         setTimeout(() => {
           navigate("/dashboard")
@@ -149,6 +158,8 @@ export default function LoginRegister() {
         if (formData.email.trim()) {
           registerData.email = formData.email
         }
+
+        console.log("📝 Registration data:", { ...registerData, password: "[HIDDEN]" })
 
         await authAPI.register(registerData)
 
@@ -172,15 +183,21 @@ export default function LoginRegister() {
 
       let errorMsg = error.message || "Terjadi kesalahan pada server"
 
-      // Customize error messages
-      if (errorMsg.includes("User not found") || errorMsg.includes("Invalid credentials")) {
+      // Customize error messages berdasarkan response backend
+      if (
+        errorMsg.includes("User not found") ||
+        errorMsg.includes("Invalid credentials") ||
+        errorMsg.includes("Username atau password salah")
+      ) {
         errorMsg = "Username atau password salah"
-      } else if (errorMsg.includes("User already exists")) {
+      } else if (errorMsg.includes("User already exists") || errorMsg.includes("Username sudah ada")) {
         errorMsg = "Username sudah digunakan, silakan pilih username lain"
       } else if (errorMsg.includes("tidak ditemukan")) {
-        errorMsg = "Endpoint tidak ditemukan. Backend mungkin belum siap."
-      } else if (errorMsg.includes("Akses ditolak")) {
+        errorMsg = "Endpoint tidak ditemukan. Periksa konfigurasi backend."
+      } else if (errorMsg.includes("Akses ditolak") || errorMsg.includes("CORS")) {
         errorMsg = "Akses ditolak. Periksa konfigurasi CORS di backend."
+      } else if (errorMsg.includes("tidak dapat terhubung")) {
+        errorMsg = "Tidak dapat terhubung ke backend. Periksa koneksi internet."
       }
 
       setErrorMessage(errorMsg)
@@ -208,6 +225,9 @@ export default function LoginRegister() {
 
   return (
     <div className="auth-body">
+      {/* Debug Component - hanya tampil di development */}
+      {import.meta.env.DEV && <ConnectionTest />}
+
       {/* Background Elements */}
       <div className="auth-background">
         <div className="floating-element element-1">
