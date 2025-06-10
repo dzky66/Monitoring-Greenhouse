@@ -102,4 +102,17 @@ export const deviceAPI = {
   },
 }
 
+// Tambahan fungsi agar tidak error saat di-import
+export const getCurrentUser = () => {
+  try {
+    return JSON.parse(localStorage.getItem("user"))
+  } catch {
+    return null
+  }
+}
+
+export const isAuthenticated = () => {
+  return !!localStorage.getItem("user")
+}
+
 export default apiClient
