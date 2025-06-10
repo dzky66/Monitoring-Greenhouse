@@ -70,13 +70,11 @@ const Dashboard = () => {
     try {
       setLoading(true)
 
-      // Endpoint sesuai dengan route backend yang sudah ada
-      const possibleEndpoints = [
-        `${window.location.origin}/api/data-sensor/latest`,
-        "http://localhost:5000/api/data-sensor/latest",
-        "http://localhost:3001/api/data-sensor/latest",
-        "/api/data-sensor/latest",
-      ]
+    const possibleEndpoints = [
+  "https://monitoring-greenhouse-production.up.railway.app/api/data-sensor/latest",
+  `${window.location.origin}/api/data-sensor/latest`
+];
+
 
       let response = null
       let data = null
