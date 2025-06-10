@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import axios from "axios"
 import "../styles/PrediksiHasil.css"
 import {
   FiArrowLeft,
@@ -48,6 +47,66 @@ const PrediksiHasil = () => {
     { id: "lainnya", nama: "Lainnya", icon: "🌱" },
   ]
 
+  // API call function untuk menghubungkan ke backend
+  const makeApiCall = async (endpoint, options = {}) => {
+    const baseUrl = import.meta.env.VITE_API_URL || "https://monitoring-greenhouse-production.up.railway.app"
+    const token = localStorage.getItem("token")
+
+    const config = {
+      headers: {
+        "Content-Type": "application/json",
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+      ...options,
+    }
+
+    try {
+      // Gunakan AbortController untuk timeout
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), options.timeout || 10000)
+
+      const response = await fetch(`${baseUrl}${endpoint}`, {
+        ...config,
+        signal: controller.signal,
+      })
+
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        const errorData = await response.text()
+        let errorMessage = "Terjadi kesalahan pada server"
+
+        try {
+          const parsedError = JSON.parse(errorData)
+          errorMessage = parsedError.message || parsedError.error || errorMessage
+        } catch (e) {
+          // If not JSON, use the text as error message
+          errorMessage = errorData || errorMessage
+        }
+
+        if (response.status === 401) {
+          // Token expired or invalid
+          localStorage.removeItem("token")
+          localStorage.removeItem("user")
+          navigate("/")
+          throw new Error("Sesi Anda telah berakhir. Silakan login kembali.")
+        }
+
+        throw new Error(errorMessage)
+      }
+
+      return await response.json()
+    } catch (error) {
+      if (error.name === "AbortError") {
+        throw new Error("Permintaan timeout. Server tidak merespon.")
+      }
+      if (error.name === "TypeError" && error.message.includes("fetch")) {
+        throw new Error("Tidak dapat terhubung ke server. Periksa koneksi internet.")
+      }
+      throw error
+    }
+  }
+
   useEffect(() => {
     document.title = "Prediksi Hasil - Smart Greenhouse"
 
@@ -71,28 +130,17 @@ const PrediksiHasil = () => {
       console.log("🔍 Mengambil data prediksi hasil panen...")
 
       // Coba beberapa endpoint prediksi
-      const endpoints = ["/api/prediksi/latest", "http://localhost:5000/api/prediksi/latest"]
+      const endpoints = ["/api/prediksi/latest", "/api/prediksi", "/api/prediksi/current"]
 
-      let response = null
       let data = null
 
       // Coba setiap endpoint sampai ada yang berhasil
       for (const endpoint of endpoints) {
         try {
           console.log(`🔄 Mencoba endpoint: ${endpoint}`)
+          data = await makeApiCall(endpoint, { method: "GET", timeout: 5000 })
 
-          // Menggunakan axios untuk GET request
-          response = await axios({
-            method: "GET",
-            url: endpoint,
-            timeout: 5000,
-            headers: {
-              "Content-Type": "application/json",
-            },
-          })
-
-          if (response.status === 200 && response.data) {
-            data = response.data
+          if (data) {
             console.log(`✅ Berhasil mengambil prediksi dari: ${endpoint}`)
             break
           }
@@ -103,10 +151,12 @@ const PrediksiHasil = () => {
       }
 
       if (data) {
-        setPrediksi(data)
+        // Handle berbagai format response
+        const prediksiData = data.data || data.prediksi || data
+        setPrediksi(prediksiData)
         setIsOnline(true)
         setLastUpdate(new Date())
-        console.log("✅ Data prediksi berhasil dimuat:", data)
+        console.log("✅ Data prediksi berhasil dimuat:", prediksiData)
       } else {
         // Jika tidak ada data prediksi, tampilkan form untuk membuat baru
         console.log("ℹ️ Tidak ada prediksi yang tersedia, menampilkan form")
@@ -115,8 +165,9 @@ const PrediksiHasil = () => {
       }
     } catch (err) {
       console.error("❌ Error mengambil data prediksi:", err)
-      setError("Gagal memuat data prediksi")
+      setError("Gagal memuat data prediksi: " + err.message)
       setIsOnline(false)
+      setShowForm(true)
     } finally {
       setLoading(false)
     }
@@ -147,29 +198,21 @@ const PrediksiHasil = () => {
       console.log("🤖 Membuat prediksi hasil panen untuk:", formData)
 
       // Coba beberapa endpoint untuk generate prediksi
-      const endpoints = ["/api/prediksi/generate", "http://localhost:5000/api/prediksi/generate"]
+      const endpoints = ["/api/prediksi/generate", "/api/prediksi/create", "/api/prediksi"]
 
-      let response = null
       let data = null
 
       // Coba setiap endpoint sampai ada yang berhasil
       for (const endpoint of endpoints) {
         try {
           console.log(`🔄 Mencoba generate di: ${endpoint}`)
-
-          // Menggunakan axios untuk POST request
-          response = await axios({
+          data = await makeApiCall(endpoint, {
             method: "POST",
-            url: endpoint,
-            data: formData,
+            body: JSON.stringify(formData),
             timeout: 15000, // Timeout lebih lama untuk AI processing
-            headers: {
-              "Content-Type": "application/json",
-            },
           })
 
-          if (response.status === 200 || response.status === 201) {
-            data = response.data
+          if (data) {
             console.log(`✅ Prediksi berhasil dibuat di: ${endpoint}`)
             break
           }
@@ -180,17 +223,19 @@ const PrediksiHasil = () => {
       }
 
       if (data) {
-        setPrediksi(data.data)
+        // Handle berbagai format response
+        const prediksiData = data.data || data.prediksi || data
+        setPrediksi(prediksiData)
         setIsOnline(true)
         setLastUpdate(new Date())
         setShowForm(false)
-        console.log("✅ Prediksi berhasil dibuat:", data.data)
+        console.log("✅ Prediksi berhasil dibuat:", prediksiData)
       } else {
         throw new Error("Tidak dapat membuat prediksi")
       }
     } catch (err) {
       console.error("❌ Error membuat prediksi:", err)
-      setError("Gagal membuat prediksi. Pastikan server berjalan dan data sensor tersedia.")
+      setError("Gagal membuat prediksi: " + err.message)
     } finally {
       setIsGenerating(false)
     }
@@ -211,31 +256,18 @@ const PrediksiHasil = () => {
       console.log(`🗑️ Menghapus prediksi dengan ID: ${prediksi.id}`)
 
       // Coba beberapa endpoint untuk delete
-      const endpoints = [`/api/prediksi/${prediksi.id}`, `http://localhost:5000/api/prediksi/${prediksi.id}`]
+      const endpoints = [`/api/prediksi/${prediksi.id}`, `/api/prediksi/delete/${prediksi.id}`]
 
-      let response = null
       let success = false
 
       // Coba setiap endpoint sampai ada yang berhasil
       for (const endpoint of endpoints) {
         try {
           console.log(`🔄 Mencoba hapus di: ${endpoint}`)
-
-          // Menggunakan axios untuk DELETE request
-          response = await axios({
-            method: "DELETE",
-            url: endpoint,
-            timeout: 5000,
-            headers: {
-              "Content-Type": "application/json",
-            },
-          })
-
-          if (response.status === 200) {
-            success = true
-            console.log(`✅ Prediksi berhasil dihapus di: ${endpoint}`)
-            break
-          }
+          await makeApiCall(endpoint, { method: "DELETE", timeout: 5000 })
+          success = true
+          console.log(`✅ Prediksi berhasil dihapus di: ${endpoint}`)
+          break
         } catch (err) {
           console.log(`❌ Gagal hapus di: ${endpoint} - ${err.message}`)
           continue
@@ -251,7 +283,7 @@ const PrediksiHasil = () => {
       }
     } catch (err) {
       console.error("❌ Error menghapus prediksi:", err)
-      setError("Gagal menghapus prediksi")
+      setError("Gagal menghapus prediksi: " + err.message)
     } finally {
       setLoading(false)
     }
@@ -321,12 +353,23 @@ const PrediksiHasil = () => {
 
     // Parse data string menjadi array untuk tampilan yang lebih baik
     const faktorPendukung = prediksi.faktor_pendukung
-      ? prediksi.faktor_pendukung.split(";").map((item) => item.trim())
+      ? Array.isArray(prediksi.faktor_pendukung)
+        ? prediksi.faktor_pendukung
+        : prediksi.faktor_pendukung.split(";").map((item) => item.trim())
       : []
+
     const faktorPenghambat = prediksi.faktor_penghambat
-      ? prediksi.faktor_penghambat.split(";").map((item) => item.trim())
+      ? Array.isArray(prediksi.faktor_penghambat)
+        ? prediksi.faktor_penghambat
+        : prediksi.faktor_penghambat.split(";").map((item) => item.trim())
       : []
-    const rekomendasi = prediksi.rekomendasi ? prediksi.rekomendasi.split(";").map((item) => item.trim()) : []
+
+    const rekomendasi = prediksi.rekomendasi
+      ? Array.isArray(prediksi.rekomendasi)
+        ? prediksi.rekomendasi
+        : prediksi.rekomendasi.split(";").map((item) => item.trim())
+      : []
+
     const dataHistoris = prediksi.data_historis || {}
 
     return (
