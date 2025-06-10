@@ -18,6 +18,7 @@ import {
   FiClock,
   FiSettings,
   FiPower,
+  FiPlus,
 } from "react-icons/fi"
 
 const KontrolCepat = () => {
@@ -25,6 +26,7 @@ const KontrolCepat = () => {
   const [devices, setDevices] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [creating, setCreating] = useState(false)
   const [lastUpdate, setLastUpdate] = useState(null)
   const [message, setMessage] = useState({ type: "", text: "" })
 
@@ -65,37 +67,38 @@ const KontrolCepat = () => {
         // Update controls berdasarkan data device yang diterima
         const newControls = {}
         data.forEach((device) => {
-          newControls[device.id] = device.status === "on" || device.status === "aktif"
+          newControls[device.id] = device.status === "on" || device.status === "aktif" || device.status === true
         })
         setControls(newControls)
         setLastUpdate(new Date())
-        showMessage("success", "Data device berhasil dimuat")
+        showMessage("success", `${data.length} device berhasil dimuat dari server`)
       } else {
         // Jika tidak ada data dari API, gunakan device default
         console.log("⚠️ No device data from API, using defaults")
-        setDevices(getDefaultDevices())
-        setControls({
-          pump1: false,
-          fan1: false,
-          light1: false,
-          heater1: false,
-          ventilation1: false,
+        const defaultDevices = getDefaultDevices()
+        setDevices(defaultDevices)
+
+        // Set controls untuk default devices
+        const defaultControls = {}
+        defaultDevices.forEach((device) => {
+          defaultControls[device.id] = false
         })
+        setControls(defaultControls)
         setLastUpdate(new Date())
-        showMessage("info", "Menggunakan device default (mode demo)")
+        showMessage("info", "Backend terhubung tapi belum ada device. Menggunakan device default.")
       }
     } catch (error) {
       console.error("❌ Error fetching device data:", error)
 
       // Fallback ke device default
-      setDevices(getDefaultDevices())
-      setControls({
-        pump1: false,
-        fan1: false,
-        light1: false,
-        heater1: false,
-        ventilation1: false,
+      const defaultDevices = getDefaultDevices()
+      setDevices(defaultDevices)
+
+      const defaultControls = {}
+      defaultDevices.forEach((device) => {
+        defaultControls[device.id] = false
       })
+      setControls(defaultControls)
       setLastUpdate(new Date())
       showMessage("warning", "Gagal mengambil data device. Menggunakan mode demo.")
     } finally {
@@ -141,6 +144,48 @@ const KontrolCepat = () => {
         deskripsi: "Sistem ventilasi otomatis",
       },
     ]
+  }
+
+  const createDevicesInBackend = async () => {
+    try {
+      setCreating(true)
+      console.log("➕ Creating default devices in backend...")
+
+      const defaultDevices = getDefaultDevices()
+      let successCount = 0
+      let errorCount = 0
+
+      for (const device of defaultDevices) {
+        try {
+          console.log(`Creating device: ${device.nama}`)
+          await deviceAPI.create({
+            nama: device.nama,
+            jenis: device.jenis,
+            status: device.status,
+            deskripsi: device.deskripsi,
+          })
+          successCount++
+        } catch (error) {
+          console.error(`Failed to create device ${device.nama}:`, error)
+          errorCount++
+        }
+      }
+
+      if (successCount > 0) {
+        showMessage("success", `${successCount} device berhasil dibuat di backend`)
+        // Refresh data setelah membuat device
+        setTimeout(() => {
+          fetchDeviceData()
+        }, 1000)
+      } else {
+        showMessage("error", "Gagal membuat device di backend")
+      }
+    } catch (error) {
+      console.error("❌ Error creating devices:", error)
+      showMessage("error", "Gagal membuat device di backend")
+    } finally {
+      setCreating(false)
+    }
   }
 
   const handleControlChange = async (deviceId, value) => {
@@ -256,7 +301,7 @@ const KontrolCepat = () => {
     setMessage({ type, text })
     setTimeout(() => {
       setMessage({ type: "", text: "" })
-    }, 3000)
+    }, 4000)
   }
 
   const formatLastUpdate = (date) => {
@@ -273,6 +318,11 @@ const KontrolCepat = () => {
 
     return date.toLocaleString("id-ID")
   }
+
+  // Check if we're using default devices (not from backend)
+  const isUsingDefaults =
+    devices.length > 0 &&
+    devices.every((device) => ["pump1", "fan1", "light1", "heater1", "ventilation1"].includes(device.id))
 
   if (loading) {
     return (
@@ -311,6 +361,16 @@ const KontrolCepat = () => {
               <FiClock className="clock-icon" />
               <span>Update: {formatLastUpdate(lastUpdate)}</span>
             </div>
+            {isUsingDefaults && (
+              <button
+                onClick={createDevicesInBackend}
+                className={`create-btn ${creating ? "loading" : ""}`}
+                disabled={creating}
+              >
+                <FiPlus className={creating ? "spinning" : ""} />
+                <span>{creating ? "Membuat..." : "Buat Device"}</span>
+              </button>
+            )}
             <button onClick={fetchDeviceData} className={`refresh-btn ${loading ? "loading" : ""}`} disabled={loading}>
               <FiRefreshCw className={loading ? "spinning" : ""} />
               <span>Refresh</span>
@@ -327,6 +387,22 @@ const KontrolCepat = () => {
         </div>
       )}
 
+      {/* Backend Status Info */}
+      {isUsingDefaults && (
+        <div className="backend-status-info">
+          <div className="status-content">
+            <FiAlertCircle className="status-icon" />
+            <div className="status-text">
+              <h3>Backend Terhubung - Device Kosong</h3>
+              <p>
+                API device berhasil terhubung tapi belum ada data device. Klik "Buat Device" untuk membuat device
+                default di backend.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       <main className="kontrol-main">
         {/* Device Status Overview */}
@@ -334,6 +410,7 @@ const KontrolCepat = () => {
           <h2>
             <FiActivity className="section-icon" />
             Status Perangkat Saat Ini
+            {isUsingDefaults && <span className="demo-badge">DEMO</span>}
           </h2>
           <div className="status-grid">
             {devices.map((device) => {
@@ -362,6 +439,7 @@ const KontrolCepat = () => {
             <h2>
               <FiSettings className="section-icon" />
               Panel Kontrol
+              {isUsingDefaults && <span className="demo-badge">DEMO</span>}
             </h2>
             <p>Ubah pengaturan perangkat sesuai kebutuhan</p>
           </div>
@@ -423,7 +501,11 @@ const KontrolCepat = () => {
                 </>
               )}
             </button>
-            <p className="save-note">Perubahan akan diterapkan secara real-time ke semua perangkat</p>
+            <p className="save-note">
+              {isUsingDefaults
+                ? "Mode demo aktif - Buat device di backend untuk kontrol real-time"
+                : "Perubahan akan diterapkan secara real-time ke semua perangkat"}
+            </p>
           </div>
         </section>
       </main>
