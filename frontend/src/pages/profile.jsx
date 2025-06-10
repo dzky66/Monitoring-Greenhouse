@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import "../styles/Profile.css"
-import { authAPI, getCurrentUser, isAuthenticated } from "../utils/api"
 import {
   FiUser,
   FiMail,
@@ -54,6 +53,72 @@ const Profile = () => {
     confirm: false,
   })
 
+  // Helper function untuk cek authentication
+  const isAuthenticated = () => {
+    const token = localStorage.getItem("token")
+    const user = localStorage.getItem("user")
+    return !!(token && user)
+  }
+
+  // Helper function untuk get current user
+  const getCurrentUser = () => {
+    try {
+      const user = localStorage.getItem("user")
+      return user ? JSON.parse(user) : null
+    } catch (error) {
+      console.error("Error parsing user data:", error)
+      return null
+    }
+  }
+
+  // API call functions
+  const makeApiCall = async (endpoint, options = {}) => {
+    const baseUrl = import.meta.env.VITE_API_URL || "https://monitoring-greenhouse-production.up.railway.app"
+    const token = localStorage.getItem("token")
+
+    const config = {
+      headers: {
+        "Content-Type": "application/json",
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+      ...options,
+    }
+
+    try {
+      const response = await fetch(`${baseUrl}${endpoint}`, config)
+
+      if (!response.ok) {
+        const errorData = await response.text()
+        let errorMessage = "Terjadi kesalahan pada server"
+
+        try {
+          const parsedError = JSON.parse(errorData)
+          errorMessage = parsedError.message || parsedError.error || errorMessage
+        } catch (e) {
+          // If not JSON, use the text as error message
+          errorMessage = errorData || errorMessage
+        }
+
+        if (response.status === 401) {
+          // Token expired or invalid
+          localStorage.removeItem("token")
+          localStorage.removeItem("user")
+          navigate("/")
+          throw new Error("Sesi Anda telah berakhir. Silakan login kembali.")
+        }
+
+        throw new Error(errorMessage)
+      }
+
+      return await response.json()
+    } catch (error) {
+      if (error.name === "TypeError" && error.message.includes("fetch")) {
+        throw new Error("Tidak dapat terhubung ke server. Periksa koneksi internet.")
+      }
+      throw error
+    }
+  }
+
   useEffect(() => {
     // Cek authentication
     if (!isAuthenticated()) {
@@ -78,35 +143,50 @@ const Profile = () => {
       setRefreshing(true)
       setError("")
 
-      // Coba ambil data fresh dari API menggunakan axios
-      const response = await authAPI.getProfile()
-      const userData = response.user
+      console.log("👤 Loading user profile from backend...")
+
+      // Coba ambil data fresh dari API
+      const response = await makeApiCall("/api/auth/profile", {
+        method: "GET",
+      })
+
+      console.log("✅ Profile data received:", response)
+
+      // Handle different response formats from backend
+      let userData
+      if (response.user) {
+        userData = response.user
+      } else if (response.data) {
+        userData = response.data
+      } else {
+        userData = response
+      }
 
       setUser(userData)
       setFormData({
-        name: userData.userProfile?.name || "",
-        email: userData.userProfile?.email || "",
-        phone: userData.userProfile?.phone || "",
-        address: userData.userProfile?.address || "",
-        bio: userData.userProfile?.bio || "",
+        name: userData.userProfile?.name || userData.name || "",
+        email: userData.userProfile?.email || userData.email || "",
+        phone: userData.userProfile?.phone || userData.phone || "",
+        address: userData.userProfile?.address || userData.address || "",
+        bio: userData.userProfile?.bio || userData.bio || "",
       })
 
       // Update localStorage dengan data fresh
       localStorage.setItem("user", JSON.stringify(userData))
     } catch (err) {
-      console.error("Error loading profile:", err)
-      setError("Gagal memuat data profil dari server")
+      console.error("❌ Error loading profile:", err)
+      setError("Gagal memuat data profil dari server: " + err.message)
 
       // Fallback ke data localStorage
       const localUser = getCurrentUser()
       if (localUser) {
         setUser(localUser)
         setFormData({
-          name: localUser.userProfile?.name || "",
-          email: localUser.userProfile?.email || "",
-          phone: localUser.userProfile?.phone || "",
-          address: localUser.userProfile?.address || "",
-          bio: localUser.userProfile?.bio || "",
+          name: localUser.userProfile?.name || localUser.name || "",
+          email: localUser.userProfile?.email || localUser.email || "",
+          phone: localUser.userProfile?.phone || localUser.phone || "",
+          address: localUser.userProfile?.address || localUser.address || "",
+          bio: localUser.userProfile?.bio || localUser.bio || "",
         })
       } else {
         navigate("/")
@@ -140,11 +220,11 @@ const Profile = () => {
     if (isEditing) {
       // Cancel editing - reset form data
       setFormData({
-        name: user.userProfile?.name || "",
-        email: user.userProfile?.email || "",
-        phone: user.userProfile?.phone || "",
-        address: user.userProfile?.address || "",
-        bio: user.userProfile?.bio || "",
+        name: user.userProfile?.name || user.name || "",
+        email: user.userProfile?.email || user.email || "",
+        phone: user.userProfile?.phone || user.phone || "",
+        address: user.userProfile?.address || user.address || "",
+        bio: user.userProfile?.bio || user.bio || "",
       })
       setError("")
       setSuccess("")
@@ -208,16 +288,44 @@ const Profile = () => {
     setSuccess("")
 
     try {
-      // Update profil menggunakan axios melalui authAPI
-      const response = await authAPI.updateProfile({
-        name: formData.name,
-        email: formData.email,
-        phone: formData.phone,
-        address: formData.address,
-        bio: formData.bio,
+      console.log("📝 Updating user profile...")
+      console.log("Profile data:", formData)
+
+      // Update profil menggunakan backend API
+      const response = await makeApiCall("/api/auth/profile", {
+        method: "PUT",
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          address: formData.address,
+          bio: formData.bio,
+        }),
       })
 
-      const updatedUser = response.user
+      console.log("✅ Profile updated successfully:", response)
+
+      // Handle different response formats
+      let updatedUser
+      if (response.user) {
+        updatedUser = response.user
+      } else if (response.data) {
+        updatedUser = response.data
+      } else {
+        // If backend doesn't return updated user, merge with existing data
+        updatedUser = {
+          ...user,
+          userProfile: {
+            ...user.userProfile,
+            name: formData.name,
+            email: formData.email,
+            phone: formData.phone,
+            address: formData.address,
+            bio: formData.bio,
+          },
+        }
+      }
+
       setUser(updatedUser)
       localStorage.setItem("user", JSON.stringify(updatedUser))
 
@@ -226,7 +334,7 @@ const Profile = () => {
 
       setTimeout(() => setSuccess(""), 3000)
     } catch (err) {
-      console.error("Error updating profile:", err)
+      console.error("❌ Error updating profile:", err)
       setError(err.message || "Gagal memperbarui profil. Silakan coba lagi.")
     } finally {
       setLoading(false)
@@ -241,11 +349,18 @@ const Profile = () => {
     setSuccess("")
 
     try {
-      // Ubah password menggunakan axios melalui authAPI
-      await authAPI.changePassword({
-        currentPassword: passwordData.currentPassword,
-        newPassword: passwordData.newPassword,
+      console.log("🔒 Changing user password...")
+
+      // Ubah password menggunakan backend API
+      const response = await makeApiCall("/api/auth/change-password", {
+        method: "PUT",
+        body: JSON.stringify({
+          currentPassword: passwordData.currentPassword,
+          newPassword: passwordData.newPassword,
+        }),
       })
+
+      console.log("✅ Password changed successfully:", response)
 
       setSuccess("Password berhasil diubah!")
       setPasswordData({
@@ -257,7 +372,7 @@ const Profile = () => {
 
       setTimeout(() => setSuccess(""), 3000)
     } catch (err) {
-      console.error("Error changing password:", err)
+      console.error("❌ Error changing password:", err)
       setError(err.message || "Gagal mengubah password. Silakan coba lagi.")
     } finally {
       setLoading(false)
@@ -345,13 +460,15 @@ const Profile = () => {
             <div className="profile-card-header">
               <div className="avatar-section">
                 <div className="avatar">
-                  <span className="avatar-text">{getInitials(user.userProfile?.name || user.username)}</span>
+                  <span className="avatar-text">
+                    {getInitials(user.userProfile?.name || user.name || user.username)}
+                  </span>
                   <button className="avatar-edit">
                     <FiEdit />
                   </button>
                 </div>
                 <div className="user-basic-info">
-                  <h2>{user.userProfile?.name || user.username}</h2>
+                  <h2>{user.userProfile?.name || user.name || user.username}</h2>
                   <p>@{user.username}</p>
                   <div className="user-status">
                     <div className="status-indicator active"></div>

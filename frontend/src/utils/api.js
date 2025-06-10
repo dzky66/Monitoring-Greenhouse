@@ -228,6 +228,49 @@ export const authAPI = {
       console.log("✅ Logout completed")
     }
   },
+
+  getProfile: async () => {
+    try {
+      console.log("👤 Getting user profile...")
+      const response = await apiClient.get("/api/auth/profile")
+      console.log("✅ Profile retrieved successfully")
+      console.log("👤 Profile data:", response)
+      return response
+    } catch (error) {
+      console.error("❌ Failed to get profile:", error)
+      throw error
+    }
+  },
+
+  updateProfile: async (userData) => {
+    try {
+      console.log("📝 Updating user profile...")
+      console.log("- User data:", userData)
+
+      const response = await apiClient.put("/api/auth/profile", userData)
+      console.log("✅ Profile updated successfully")
+      console.log("👤 Updated profile:", response)
+      return response
+    } catch (error) {
+      console.error("❌ Failed to update profile:", error)
+      throw error
+    }
+  },
+
+  changePassword: async (passwords) => {
+    try {
+      console.log("🔑 Changing password...")
+      console.log("- Passwords:", { ...passwords, newPassword: "[HIDDEN]", oldPassword: "[HIDDEN]" })
+
+      const response = await apiClient.put("/api/auth/change-password", passwords)
+      console.log("✅ Password changed successfully")
+      console.log("🔑 Password change response:", response)
+      return response
+    } catch (error) {
+      console.error("❌ Failed to change password:", error)
+      throw error
+    }
+  },
 }
 
 // Sensor API functions
