@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import "../styles/Monitoring.css"
 import { useNavigate } from "react-router-dom"
 import { sensorAPI } from "../utils/api"
 import {
