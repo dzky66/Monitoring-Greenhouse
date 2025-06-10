@@ -302,7 +302,7 @@ export const sensorAPI = {
   },
 }
 
-// Device API functions - DISESUAIKAN DENGAN BACKEND STRUCTURE
+// Device API functions - DISESUAIKAN DENGAN BACKEND ROUTES YANG SEBENARNYA
 export const deviceAPI = {
   getAll: async () => {
     try {
@@ -312,128 +312,53 @@ export const deviceAPI = {
       console.log("✅ Devices retrieved from backend")
       console.log("🔧 Raw device data:", response)
 
-      // Konversi struktur backend ke format frontend
-      if (Array.isArray(response) && response.length > 0) {
-        // Ambil device pertama (biasanya cuma ada satu)
-        const backendDevice = response[0]
-        
-        // Konversi ke format yang diharapkan frontend
-        const frontendDevices = [
-          {
-            id: "lampu",
-            nama: "Lampu LED",
-            jenis: "light",
-            status: backendDevice.lampu ? "on" : "off",
-            deskripsi: "Lampu pertumbuhan tanaman",
-            backendId: backendDevice.id,
-          },
-          {
-            id: "ventilasi",
-            nama: "Ventilasi",
-            jenis: "ventilation",
-            status: backendDevice.ventilasi === "buka" ? "on" : "off",
-            deskripsi: "Sistem ventilasi otomatis",
-            backendId: backendDevice.id,
-          },
-          {
-            id: "humidifier",
-            nama: "Humidifier",
-            jenis: "humidifier",
-            status: backendDevice.humidifier ? "on" : "off",
-            deskripsi: "Pengatur kelembapan udara",
-            backendId: backendDevice.id,
-          },
-          {
-            id: "kipas",
-            nama: "Kipas Ventilasi",
-            jenis: "fan",
-            status: backendDevice.kipas ? "on" : "off",
-            deskripsi: "Kipas sirkulasi udara",
-            backendId: backendDevice.id,
-          },
-          {
-            id: "pemanas",
-            nama: "Pemanas",
-            jenis: "heater",
-            status: backendDevice.pemanas ? "on" : "off",
-            deskripsi: "Pemanas greenhouse",
-            backendId: backendDevice.id,
-          },
-        ]
-
-        console.log("🔄 Converted to frontend format:", frontendDevices)
-        return frontendDevices
+      // Backend mengembalikan array devices langsung
+      if (Array.isArray(response)) {
+        console.log(`📊 Found ${response.length} devices`)
+        return response
       }
 
-      // Jika tidak ada data, return empty array
-      console.log("⚠️ No device data from backend")
-      return []
+      // Jika response bukan array, wrap dalam array
+      return response ? [response] : []
     } catch (error) {
       console.error("❌ Failed to get devices:", error)
-      return []
-    }
-  },
-
-  control: async (deviceId, action) => {
-    try {
-      console.log(`🎛️ Controlling device ${deviceId}: ${action}`)
-
-      // Ambil device yang ada dulu untuk mendapatkan backendId
-      const devices = await deviceAPI.getAll()
-      const device = devices.find(d => d.id === deviceId)
-      
-      if (!device) {
-        throw new Error(`Device ${deviceId} tidak ditemukan`)
-      }
-
-      const backendId = device.backendId
-      if (!backendId) {
-        throw new Error(`Backend ID tidak ditemukan untuk device ${deviceId}`)
-      }
-
-      // Siapkan data update berdasarkan deviceId
-      const updateData = {}
-      
-      if (deviceId === "lampu") {
-        updateData.lampu = action === "on"
-      } else if (deviceId === "ventilasi") {
-        updateData.ventilasi = action === "on" ? "buka" : "tutup"
-      } else if (deviceId === "humidifier") {
-        updateData.humidifier = action === "on"
-      } else if (deviceId === "kipas") {
-        updateData.kipas = action === "on"
-      } else if (deviceId === "pemanas") {
-        updateData.pemanas = action === "on"
-      }
-
-      console.log(`📝 Updating backend device ${backendId} with:`, updateData)
-
-      const response = await apiClient.put(`/api/device/${backendId}`, updateData)
-      console.log("✅ Device controlled successfully")
-      return response
-    } catch (error) {
-      console.error("❌ Failed to control device:", error)
       throw error
     }
   },
 
-  create: async () => {
+  getById: async (deviceId) => {
     try {
-      console.log("➕ Creating default device in backend...")
+      console.log(`🔍 Getting device by ID: ${deviceId}`)
+      const response = await apiClient.get(`/api/device/${deviceId}`)
+      console.log("✅ Device retrieved by ID")
+      return response
+    } catch (error) {
+      console.error("❌ Failed to get device by ID:", error)
+      throw error
+    }
+  },
 
-      // Buat device dengan semua field default
-      const deviceData = {
+  create: async (deviceData = {}) => {
+    try {
+      console.log("➕ Creating new device...")
+
+      // Data default untuk device baru
+      const defaultData = {
         lampu: false,
         ventilasi: "tutup",
         humidifier: false,
         kipas: false,
         pemanas: false,
+        ...deviceData, // Override dengan data yang diberikan
       }
 
-      console.log("📝 Creating device with data:", deviceData)
+      console.log("📝 Creating device with data:", defaultData)
 
-      const response = await apiClient.post("/api/device", deviceData)
+      const response = await apiClient.post("/api/device", defaultData)
       console.log("✅ Device created successfully")
+      console.log("📊 Created device:", response)
+
+      // Backend mengembalikan { message: "...", data: device }
       return response
     } catch (error) {
       console.error("❌ Failed to create device:", error)
@@ -441,38 +366,105 @@ export const deviceAPI = {
     }
   },
 
+  update: async (deviceId, deviceData) => {
+    try {
+      console.log(`📝 Updating device ID: ${deviceId}`)
+      console.log("📝 Update data:", deviceData)
+
+      const response = await apiClient.put(`/api/device/${deviceId}`, deviceData)
+      console.log("✅ Device updated successfully")
+      console.log("📊 Updated device:", response)
+
+      // Backend mengembalikan { message: "...", data: device }
+      return response
+    } catch (error) {
+      console.error("❌ Failed to update device:", error)
+      throw error
+    }
+  },
+
+  delete: async (deviceId) => {
+    try {
+      console.log(`🗑️ Deleting device ID: ${deviceId}`)
+      const response = await apiClient.delete(`/api/device/${deviceId}`)
+      console.log("✅ Device deleted successfully")
+      return response
+    } catch (error) {
+      console.error("❌ Failed to delete device:", error)
+      throw error
+    }
+  },
+
   // Fungsi untuk update semua device sekaligus
   updateAll: async (controls) => {
     try {
-      console.log("💾 Updating all devices...")
+      console.log("💾 Updating all device controls...")
+      console.log("📝 Controls to update:", controls)
 
-      // Ambil device yang ada untuk mendapatkan backendId
+      // Ambil device yang ada untuk mendapatkan ID
+      const devices = await deviceAPI.getAll()
+      if (devices.length === 0) {
+        throw new Error("Tidak ada device yang ditemukan. Buat device terlebih dahulu.")
+      }
+
+      // Ambil device pertama (biasanya cuma ada satu)
+      const deviceId = devices[0].id
+      console.log(`🎯 Updating device ID: ${deviceId}`)
+
+      // Update device dengan controls yang baru
+      const response = await deviceAPI.update(deviceId, controls)
+      console.log("✅ All device controls updated successfully")
+      return response
+    } catch (error) {
+      console.error("❌ Failed to update all device controls:", error)
+      throw error
+    }
+  },
+
+  // Fungsi untuk kontrol individual device (untuk kompatibilitas)
+  control: async (deviceType, action) => {
+    try {
+      console.log(`🎛️ Controlling device type: ${deviceType}, action: ${action}`)
+
+      // Ambil device yang ada
       const devices = await deviceAPI.getAll()
       if (devices.length === 0) {
         throw new Error("Tidak ada device yang ditemukan")
       }
 
-      const backendId = devices[0].backendId
-      if (!backendId) {
-        throw new Error("Backend ID tidak ditemukan")
+      const deviceId = devices[0].id
+      const currentDevice = devices[0]
+
+      // Siapkan data update berdasarkan deviceType dan action
+      const updateData = { ...currentDevice }
+
+      if (deviceType === "lampu") {
+        updateData.lampu = action === "on"
+      } else if (deviceType === "ventilasi") {
+        updateData.ventilasi = action === "on" ? "buka" : "tutup"
+      } else if (deviceType === "humidifier") {
+        updateData.humidifier = action === "on"
+      } else if (deviceType === "kipas") {
+        updateData.kipas = action === "on"
+      } else if (deviceType === "pemanas") {
+        updateData.pemanas = action === "on"
+      } else {
+        throw new Error(`Device type tidak dikenal: ${deviceType}`)
       }
 
-      // Konversi controls ke format backend
-      const updateData = {
-        lampu: controls.lampu || false,
-        ventilasi: controls.ventilasi ? "buka" : "tutup",
-        humidifier: controls.humidifier || false,
-        kipas: controls.kipas || false,
-        pemanas: controls.pemanas || false,
-      }
+      // Hapus fields yang tidak perlu untuk update
+      delete updateData.id
+      delete updateData.createdAt
+      delete updateData.updatedAt
+      delete updateData.logs
 
-      console.log(`📝 Updating all devices with:`, updateData)
+      console.log(`📝 Updating device with:`, updateData)
 
-      const response = await apiClient.put(`/api/device/${backendId}`, updateData)
-      console.log("✅ All devices updated successfully")
+      const response = await deviceAPI.update(deviceId, updateData)
+      console.log("✅ Device controlled successfully")
       return response
     } catch (error) {
-      console.error("❌ Failed to update all devices:", error)
+      console.error("❌ Failed to control device:", error)
       throw error
     }
   },

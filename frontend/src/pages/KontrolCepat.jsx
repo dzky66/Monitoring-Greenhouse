@@ -56,16 +56,14 @@ const KontrolCepat = () => {
       setLoading(true)
       console.log("🔧 Fetching device data...")
 
-      // Gunakan deviceAPI yang sudah disesuaikan
-      const response = await deviceAPI.getAll()
-      console.log("✅ Device data received:", response)
+      // Gunakan deviceAPI.getAll() yang sudah disesuaikan
+      const devices = await deviceAPI.getAll()
+      console.log("✅ Device data received:", devices)
 
-      if (response && Array.isArray(response) && response.length > 0) {
-        // Response dari backend adalah array device dengan struktur backend
-        setDevices(response)
-
-        // Ambil device pertama (biasanya cuma ada satu device record)
-        const latestDevice = response[0]
+      if (devices && Array.isArray(devices) && devices.length > 0) {
+        // Set devices dan ambil device pertama
+        setDevices(devices)
+        const latestDevice = devices[0]
         setCurrentDevice(latestDevice)
 
         // Set controls berdasarkan data backend
@@ -78,7 +76,7 @@ const KontrolCepat = () => {
         })
 
         setLastUpdate(new Date(latestDevice.updatedAt || latestDevice.createdAt))
-        showMessage("success", "Data device berhasil dimuat dari backend")
+        showMessage("success", `Device berhasil dimuat (ID: ${latestDevice.id})`)
       } else {
         // Jika tidak ada data, buat device default
         console.log("⚠️ No device data, creating default device...")
@@ -110,6 +108,7 @@ const KontrolCepat = () => {
       const response = await deviceAPI.create()
       console.log("✅ Default device created:", response)
 
+      // Backend mengembalikan { message: "...", data: device }
       if (response && response.data) {
         const newDevice = response.data
         setCurrentDevice(newDevice)
@@ -124,11 +123,13 @@ const KontrolCepat = () => {
         })
 
         setLastUpdate(new Date())
-        showMessage("success", "Device default berhasil dibuat di backend")
+        showMessage("success", `Device default berhasil dibuat (ID: ${newDevice.id})`)
+      } else {
+        throw new Error("Response tidak sesuai format yang diharapkan")
       }
     } catch (error) {
       console.error("❌ Error membuat device default:", error)
-      showMessage("warning", "Gagal membuat device default. Mode demo aktif.")
+      showMessage("warning", "Gagal membuat device default: " + error.message)
 
       // Set default untuk demo
       setControls({
@@ -164,19 +165,20 @@ const KontrolCepat = () => {
       const response = await deviceAPI.updateAll(controls)
       console.log("✅ Changes saved successfully:", response)
 
-      if (response) {
-        // Update currentDevice dengan data terbaru jika ada
-        if (response.data) {
-          setCurrentDevice(response.data)
-        }
-
+      // Backend mengembalikan { message: "...", data: device }
+      if (response && response.data) {
+        setCurrentDevice(response.data)
         setLastUpdate(new Date())
-        showMessage("success", "Pengaturan device berhasil disimpan!")
+        showMessage("success", response.message || "Pengaturan device berhasil disimpan!")
 
         // Refresh data setelah 1 detik
         setTimeout(() => {
           fetchDeviceData()
         }, 1000)
+      } else {
+        // Jika tidak ada response.data, tetap update timestamp
+        setLastUpdate(new Date())
+        showMessage("success", "Pengaturan berhasil disimpan!")
       }
     } catch (error) {
       console.error("❌ Error saving changes:", error)
