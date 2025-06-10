@@ -127,22 +127,25 @@ export default function LoginRegister() {
 
     try {
       if (isLogin) {
-        // Login menggunakan axios melalui authAPI
+        // Login menggunakan authAPI yang sudah diperbaiki
+        console.log("🔐 Attempting login to Railway backend...")
         const response = await authAPI.login({
           username: formData.username,
           password: formData.password,
         })
 
-        // Simpan user data dan token
-        localStorage.setItem("token", response.token)
-        localStorage.setItem("user", JSON.stringify(response.user))
-
+        // Response sudah dihandle di interceptor, token dan user sudah disimpan
         setSuccessMessage("Login berhasil! Mengalihkan ke dashboard...")
+
+        // Log untuk debugging
+        console.log("✅ Login successful, redirecting to dashboard...")
+
         setTimeout(() => {
           navigate("/dashboard")
         }, 1500)
       } else {
-        // Register menggunakan axios melalui authAPI
+        // Register menggunakan authAPI yang sudah diperbaiki
+        console.log("📝 Attempting registration to Railway backend...")
         const registerData = {
           username: formData.username,
           password: formData.password,
@@ -157,6 +160,8 @@ export default function LoginRegister() {
         await authAPI.register(registerData)
 
         setSuccessMessage("Registrasi berhasil! Silakan login.")
+        console.log("✅ Registration successful, switching to login mode...")
+
         setTimeout(() => {
           setIsLogin(true)
           setFormData({
@@ -170,8 +175,21 @@ export default function LoginRegister() {
         }, 2000)
       }
     } catch (error) {
-      console.error("Auth error:", error)
-      setErrorMessage(error.message || "Terjadi kesalahan pada server")
+      console.error("❌ Auth error:", error)
+
+      // Handle specific error messages dari backend
+      let errorMsg = error.message || "Terjadi kesalahan pada server"
+
+      // Customize error messages untuk user experience yang lebih baik
+      if (errorMsg.includes("User not found") || errorMsg.includes("Invalid credentials")) {
+        errorMsg = "Username atau password salah"
+      } else if (errorMsg.includes("User already exists")) {
+        errorMsg = "Username sudah digunakan, silakan pilih username lain"
+      } else if (errorMsg.includes("tidak dapat terhubung")) {
+        errorMsg = "Tidak dapat terhubung ke server. Periksa koneksi internet Anda."
+      }
+
+      setErrorMessage(errorMsg)
     } finally {
       setLoading(false)
     }
