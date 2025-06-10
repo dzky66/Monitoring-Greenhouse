@@ -1,42 +1,90 @@
 import axios from "axios"
 
-// Fungsi untuk mendapatkan base URL API - diperbaiki untuk Vite
+// Fungsi untuk mendapatkan base URL API - diperbaiki untuk debugging
 const getApiBaseUrl = () => {
+  // Log environment variables untuk debugging
+  console.log("🔍 Environment check:")
+  console.log("- VITE_API_URL:", import.meta.env.VITE_API_URL)
+  console.log("- Current hostname:", window.location.hostname)
+  console.log("- Current protocol:", window.location.protocol)
+
   // Untuk Vite, gunakan import.meta.env
   if (import.meta.env.VITE_API_URL) {
+    console.log("✅ Using VITE_API_URL:", import.meta.env.VITE_API_URL)
     return import.meta.env.VITE_API_URL
   }
 
   // Fallback berdasarkan environment
   if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+    console.log("🏠 Using localhost fallback")
     return "http://localhost:5000"
   }
 
   // Untuk production, gunakan URL Railway yang sudah Anda berikan
-  return "https://monitoring-greenhouse-production.up.railway.app"
+  const railwayUrl = "https://monitoring-greenhouse-production.up.railway.app"
+  console.log("🚂 Using Railway URL:", railwayUrl)
+  return railwayUrl
 }
 
-// Konfigurasi base axios instance
+// Test koneksi langsung ke Railway
+const testRailwayConnection = async () => {
+  const railwayUrl = "https://monitoring-greenhouse-production.up.railway.app"
+
+  try {
+    console.log("🔍 Testing direct connection to Railway...")
+
+    // Test dengan fetch biasa dulu
+    const response = await fetch(`${railwayUrl}/api/health`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    })
+
+    console.log("✅ Railway connection test result:", response.status)
+
+    if (response.ok) {
+      const data = await response.json()
+      console.log("✅ Railway response data:", data)
+      return true
+    } else {
+      console.log("❌ Railway returned status:", response.status)
+      return false
+    }
+  } catch (error) {
+    console.error("❌ Railway connection test failed:", error)
+    return false
+  }
+}
+
+// Konfigurasi base axios instance dengan debugging
 const apiClient = axios.create({
   baseURL: getApiBaseUrl(),
-  timeout: 15000, // Timeout 15 detik untuk koneksi yang lebih stabil
+  timeout: 30000, // Increase timeout to 30 seconds
   headers: {
     "Content-Type": "application/json",
     Accept: "application/json",
   },
 })
 
-// Request interceptor untuk menambahkan token otomatis
+// Request interceptor dengan debugging yang lebih detail
 apiClient.interceptors.request.use(
   (config) => {
-    // Log request untuk debugging
-    console.log(`🚀 API Request: ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`)
+    console.log("🚀 API Request Details:")
+    console.log("- Method:", config.method?.toUpperCase())
+    console.log("- Base URL:", config.baseURL)
+    console.log("- Endpoint:", config.url)
+    console.log("- Full URL:", `${config.baseURL}${config.url}`)
+    console.log("- Headers:", config.headers)
+    console.log("- Data:", config.data)
 
     // Ambil token dari localStorage
     const token = localStorage.getItem("token")
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
+      console.log("🔑 Token added to request")
     }
+
     return config
   },
   (error) => {
@@ -48,24 +96,28 @@ apiClient.interceptors.request.use(
 // Response interceptor untuk handle error secara global
 apiClient.interceptors.response.use(
   (response) => {
-    // Log response untuk debugging
-    console.log(`✅ API Response: ${response.status} ${response.config.url}`)
+    console.log("✅ API Response Details:")
+    console.log("- Status:", response.status)
+    console.log("- URL:", response.config.url)
+    console.log("- Data:", response.data)
 
-    // Return data langsung dari response
     return response.data
   },
   (error) => {
-    console.error("❌ API Error:", error)
+    console.error("❌ API Error Details:")
+    console.error("- Error object:", error)
+    console.error("- Error message:", error.message)
+    console.error("- Error code:", error.code)
 
-    // Handle berbagai jenis error
     if (error.response) {
-      // Server merespon dengan status error
+      console.error("- Response status:", error.response.status)
+      console.error("- Response data:", error.response.data)
+      console.error("- Response headers:", error.response.headers)
+
       const status = error.response.status
       const message = error.response.data?.message || error.response.data?.error || "Terjadi kesalahan pada server"
 
-      // Handle specific status codes
       if (status === 401) {
-        // Unauthorized - hapus token dan redirect ke login
         clearAuthData()
         if (window.location.pathname !== "/login") {
           window.location.href = "/login"
@@ -74,20 +126,27 @@ apiClient.interceptors.response.use(
       } else if (status === 403) {
         throw new Error("Anda tidak memiliki akses untuk melakukan tindakan ini.")
       } else if (status === 404) {
-        throw new Error("Data yang diminta tidak ditemukan.")
+        throw new Error("Endpoint tidak ditemukan. Periksa konfigurasi backend.")
       } else if (status >= 500) {
         throw new Error("Terjadi kesalahan pada server. Silakan coba lagi nanti.")
       }
 
       throw new Error(message)
     } else if (error.request) {
-      // Request dibuat tapi tidak ada response
-      console.error("Network Error - No Response:", error.request)
-      throw new Error("Tidak dapat terhubung ke server. Periksa koneksi internet Anda.")
+      console.error("- Request was made but no response received")
+      console.error("- Request details:", error.request)
+
+      // Check if it's a CORS error
+      if (error.message.includes("Network Error")) {
+        throw new Error(
+          "CORS Error: Backend tidak mengizinkan akses dari domain ini. Periksa konfigurasi CORS di backend.",
+        )
+      }
+
+      throw new Error("Tidak dapat terhubung ke server. Periksa koneksi internet dan konfigurasi backend.")
     } else {
-      // Error lainnya
-      console.error("Request Setup Error:", error.message)
-      throw new Error("Terjadi kesalahan yang tidak terduga")
+      console.error("- Error in setting up request:", error.message)
+      throw new Error("Terjadi kesalahan yang tidak terduga: " + error.message)
     }
   },
 )
@@ -114,19 +173,32 @@ export const clearAuthData = () => {
   localStorage.removeItem("user")
 }
 
-// Auth API functions - diperbaiki endpoint paths dan hapus type annotations
+// Auth API functions dengan debugging
 export const authAPI = {
   login: async (credentials) => {
     try {
-      console.log("🔐 Mencoba login dengan username:", credentials.username)
+      console.log("🔐 Login attempt started")
+      console.log("- Username:", credentials.username)
+      console.log("- Password length:", credentials.password?.length)
+
+      // Test Railway connection first
+      const railwayConnected = await testRailwayConnection()
+      if (!railwayConnected) {
+        throw new Error("Backend Railway tidak dapat diakses. Periksa status backend.")
+      }
+
       const response = await apiClient.post("/api/auth/login", credentials)
+
+      console.log("✅ Login response received:", response)
 
       // Simpan token dan user data jika login berhasil
       if (response.token) {
         localStorage.setItem("token", response.token)
+        console.log("🔑 Token saved to localStorage")
       }
       if (response.user) {
         localStorage.setItem("user", JSON.stringify(response.user))
+        console.log("👤 User data saved to localStorage")
       }
 
       console.log("✅ Login berhasil")
@@ -139,7 +211,17 @@ export const authAPI = {
 
   register: async (userData) => {
     try {
-      console.log("📝 Mencoba registrasi dengan username:", userData.username)
+      console.log("📝 Register attempt started")
+      console.log("- Username:", userData.username)
+      console.log("- Name:", userData.name)
+      console.log("- Email:", userData.email)
+
+      // Test Railway connection first
+      const railwayConnected = await testRailwayConnection()
+      if (!railwayConnected) {
+        throw new Error("Backend Railway tidak dapat diakses. Periksa status backend.")
+      }
+
       const response = await apiClient.post("/api/auth/register", userData)
       console.log("✅ Registrasi berhasil")
       return response
@@ -312,10 +394,17 @@ export const deviceAPI = {
   },
 }
 
-// Fungsi untuk test koneksi ke backend
+// Fungsi untuk test koneksi ke backend dengan debugging
 export const testConnection = async () => {
   try {
     console.log("🔍 Testing connection to backend...")
+
+    // Test Railway connection first
+    const railwayConnected = await testRailwayConnection()
+    if (!railwayConnected) {
+      throw new Error("Railway backend tidak dapat diakses")
+    }
+
     const response = await apiClient.get("/api/health")
     console.log("✅ Backend connection successful!")
     return response
@@ -325,6 +414,6 @@ export const testConnection = async () => {
   }
 }
 
-// Export default untuk apiClient
+// Export semua yang diperlukan
+export { testRailwayConnection }
 export default apiClient
-  

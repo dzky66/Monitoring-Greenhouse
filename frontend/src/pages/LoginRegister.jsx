@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import "../styles/LoginRegister.css"
 import { authAPI } from "../utils/api"
+import ConnectionDebugger from "../utils/ConnectionDebugger"
 import {
   FiUser,
   FiLock,
@@ -127,24 +128,24 @@ export default function LoginRegister() {
 
     try {
       if (isLogin) {
-        // Login menggunakan authAPI yang sudah diperbaiki
         console.log("🔐 Attempting login to Railway backend...")
+        console.log(
+          "- Backend URL:",
+          import.meta.env.VITE_API_URL || "https://monitoring-greenhouse-production.up.railway.app",
+        )
+
         const response = await authAPI.login({
           username: formData.username,
           password: formData.password,
         })
 
-        // Response sudah dihandle di interceptor, token dan user sudah disimpan
         setSuccessMessage("Login berhasil! Mengalihkan ke dashboard...")
-
-        // Log untuk debugging
         console.log("✅ Login successful, redirecting to dashboard...")
 
         setTimeout(() => {
           navigate("/dashboard")
         }, 1500)
       } else {
-        // Register menggunakan authAPI yang sudah diperbaiki
         console.log("📝 Attempting registration to Railway backend...")
         const registerData = {
           username: formData.username,
@@ -152,7 +153,6 @@ export default function LoginRegister() {
           name: formData.name,
         }
 
-        // Tambahkan email hanya jika diisi
         if (formData.email.trim()) {
           registerData.email = formData.email
         }
@@ -177,16 +177,17 @@ export default function LoginRegister() {
     } catch (error) {
       console.error("❌ Auth error:", error)
 
-      // Handle specific error messages dari backend
       let errorMsg = error.message || "Terjadi kesalahan pada server"
 
-      // Customize error messages untuk user experience yang lebih baik
+      // Customize error messages
       if (errorMsg.includes("User not found") || errorMsg.includes("Invalid credentials")) {
         errorMsg = "Username atau password salah"
       } else if (errorMsg.includes("User already exists")) {
         errorMsg = "Username sudah digunakan, silakan pilih username lain"
-      } else if (errorMsg.includes("tidak dapat terhubung")) {
-        errorMsg = "Tidak dapat terhubung ke server. Periksa koneksi internet Anda."
+      } else if (errorMsg.includes("CORS Error")) {
+        errorMsg = "Backend tidak dapat diakses. Periksa konfigurasi CORS di Railway."
+      } else if (errorMsg.includes("Railway tidak dapat diakses")) {
+        errorMsg = "Backend Railway sedang offline atau tidak dapat diakses."
       }
 
       setErrorMessage(errorMsg)
@@ -214,6 +215,9 @@ export default function LoginRegister() {
 
   return (
     <div className="auth-body">
+      {/* Debug Component - hanya tampil di development */}
+      {import.meta.env.DEV && <ConnectionDebugger />}
+
       {/* Background Elements */}
       <div className="auth-background">
         <div className="floating-element element-1">
