@@ -1,81 +1,76 @@
 import axios from "axios"
 
-// Fungsi untuk mendapatkan base URL API - diperbaiki untuk Railway yang sudah online
+// Fungsi untuk mendapatkan base URL API
 const getApiBaseUrl = () => {
   console.log("🔍 Environment check:")
   console.log("- VITE_API_URL:", import.meta.env.VITE_API_URL)
   console.log("- Current hostname:", window.location.hostname)
 
-  // Untuk Vite, gunakan import.meta.env
   if (import.meta.env.VITE_API_URL) {
     console.log("✅ Using VITE_API_URL:", import.meta.env.VITE_API_URL)
     return import.meta.env.VITE_API_URL
   }
 
-  // Fallback berdasarkan environment
   if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
     console.log("🏠 Using localhost fallback")
     return "http://localhost:5000"
   }
 
-  // Backend Railway sudah online - gunakan URL yang benar
   const railwayUrl = "https://monitoring-greenhouse-production.up.railway.app"
   console.log("🚂 Using Railway URL:", railwayUrl)
   return railwayUrl
 }
 
-// Test koneksi langsung ke Railway yang sudah online
-const testRailwayConnection = async () => {
+// Test koneksi dan cek endpoint yang tersedia
+const discoverAvailableEndpoints = async () => {
   const railwayUrl = "https://monitoring-greenhouse-production.up.railway.app"
 
   try {
-    console.log("🔍 Testing connection to Railway backend...")
+    console.log("🔍 Discovering available endpoints...")
 
-    // Test dengan fetch biasa dulu
-    const response = await fetch(`${railwayUrl}/api/health`, {
+    // Test root endpoint untuk mendapatkan info API
+    const response = await fetch(`${railwayUrl}/`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
       },
     })
 
-    console.log("✅ Railway connection test result:", response.status)
-
     if (response.ok) {
       const data = await response.json()
-      console.log("✅ Railway response data:", data)
-      return true
-    } else {
-      console.log("❌ Railway returned status:", response.status)
+      console.log("✅ API Info received:", data)
 
-      // Jika endpoint /api/health tidak ada, coba endpoint lain
-      if (response.status === 404) {
-        console.log("🔄 Trying alternative endpoint...")
-        const altResponse = await fetch(`${railwayUrl}/`, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-          },
-        })
-
-        if (altResponse.ok) {
-          console.log("✅ Railway backend is online (alternative endpoint)")
-          return true
-        }
+      if (data.endpoints) {
+        console.log("📋 Available endpoints:", data.endpoints)
+        return data.endpoints
       }
-
-      return false
     }
+
+    // Jika root tidak memberikan info, coba /api
+    const apiResponse = await fetch(`${railwayUrl}/api`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    })
+
+    if (apiResponse.ok) {
+      const apiData = await apiResponse.json()
+      console.log("✅ API endpoints info:", apiData)
+      return apiData.endpoints || []
+    }
+
+    return null
   } catch (error) {
-    console.error("❌ Railway connection test failed:", error)
-    return false
+    console.error("❌ Failed to discover endpoints:", error)
+    return null
   }
 }
 
 // Konfigurasi base axios instance
 const apiClient = axios.create({
   baseURL: getApiBaseUrl(),
-  timeout: 30000, // 30 seconds timeout
+  timeout: 30000,
   headers: {
     "Content-Type": "application/json",
     Accept: "application/json",
@@ -91,7 +86,6 @@ apiClient.interceptors.request.use(
     console.log("- Endpoint:", config.url)
     console.log("- Full URL:", `${config.baseURL}${config.url}`)
 
-    // Ambil token dari localStorage
     const token = localStorage.getItem("token")
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
@@ -127,7 +121,12 @@ apiClient.interceptors.response.use(
       const status = error.response.status
       const message = error.response.data?.message || error.response.data?.error || "Terjadi kesalahan pada server"
 
-      if (status === 401) {
+      if (status === 404) {
+        console.error("❌ 404 Error - Endpoint not found!")
+        console.error("- Requested URL:", error.config.url)
+        console.error("- Available endpoints might be different")
+        throw new Error(`Endpoint tidak ditemukan: ${error.config.url}. Periksa konfigurasi backend.`)
+      } else if (status === 401) {
         clearAuthData()
         if (window.location.pathname !== "/login") {
           window.location.href = "/login"
@@ -135,8 +134,6 @@ apiClient.interceptors.response.use(
         throw new Error("Sesi Anda telah berakhir. Silakan login kembali.")
       } else if (status === 403) {
         throw new Error("Anda tidak memiliki akses untuk melakukan tindakan ini.")
-      } else if (status === 404) {
-        throw new Error("Endpoint tidak ditemukan. Periksa konfigurasi backend.")
       } else if (status >= 500) {
         throw new Error("Terjadi kesalahan pada server. Silakan coba lagi nanti.")
       }
@@ -144,13 +141,6 @@ apiClient.interceptors.response.use(
       throw new Error(message)
     } else if (error.request) {
       console.error("- Network Error:", error.request)
-
-      if (error.message.includes("Network Error")) {
-        throw new Error(
-          "CORS Error: Backend tidak mengizinkan akses dari domain ini. Periksa konfigurasi CORS di backend.",
-        )
-      }
-
       throw new Error("Tidak dapat terhubung ke server. Periksa koneksi internet dan konfigurasi backend.")
     } else {
       console.error("- Setup Error:", error.message)
@@ -181,40 +171,47 @@ export const clearAuthData = () => {
   localStorage.removeItem("user")
 }
 
-// Auth API functions - sesuaikan dengan backend yang sudah online
+// Auth API functions dengan endpoint discovery
 export const authAPI = {
   login: async (credentials) => {
     try {
       console.log("🔐 Login attempt started")
       console.log("- Username:", credentials.username)
 
-      // Test Railway connection first
-      const railwayConnected = await testRailwayConnection()
-      if (!railwayConnected) {
-        throw new Error("Backend Railway tidak dapat diakses. Periksa status backend.")
-      }
+      // Discover available endpoints first
+      const endpoints = await discoverAvailableEndpoints()
+      console.log("📋 Discovered endpoints:", endpoints)
 
-      // Coba beberapa endpoint yang mungkin ada
-      const possibleEndpoints = ["/api/auth/login", "/auth/login", "/login", "/api/login"]
+      // Coba berbagai kemungkinan endpoint login
+      const possibleLoginEndpoints = [
+        "/api/auth/login",
+        "/auth/login",
+        "/login",
+        "/api/login",
+        "/api/user/login", // Berdasarkan routes yang ada
+      ]
 
       let response = null
       let lastError = null
 
-      for (const endpoint of possibleEndpoints) {
+      for (const endpoint of possibleLoginEndpoints) {
         try {
-          console.log(`🔄 Trying endpoint: ${endpoint}`)
+          console.log(`🔄 Trying login endpoint: ${endpoint}`)
           response = await apiClient.post(endpoint, credentials)
-          console.log(`✅ Success with endpoint: ${endpoint}`)
+          console.log(`✅ Success with login endpoint: ${endpoint}`)
           break
         } catch (error) {
-          console.log(`❌ Failed with endpoint: ${endpoint}`)
+          console.log(`❌ Failed with login endpoint: ${endpoint}`)
+          console.log("- Error:", error.message)
           lastError = error
           continue
         }
       }
 
       if (!response) {
-        throw lastError || new Error("Semua endpoint login gagal")
+        console.error("❌ All login endpoints failed")
+        console.error("💡 Available endpoints from backend:", endpoints)
+        throw lastError || new Error("Semua endpoint login gagal. Periksa konfigurasi backend.")
       }
 
       console.log("✅ Login response received:", response)
@@ -229,7 +226,6 @@ export const authAPI = {
         console.log("👤 User data saved to localStorage")
       }
 
-      console.log("✅ Login berhasil")
       return response
     } catch (error) {
       console.error("❌ Login gagal:", error)
@@ -240,28 +236,27 @@ export const authAPI = {
   register: async (userData) => {
     try {
       console.log("📝 Register attempt started")
-      console.log("- Username:", userData.username)
 
-      // Test Railway connection first
-      const railwayConnected = await testRailwayConnection()
-      if (!railwayConnected) {
-        throw new Error("Backend Railway tidak dapat diakses. Periksa status backend.")
-      }
-
-      // Coba beberapa endpoint yang mungkin ada
-      const possibleEndpoints = ["/api/auth/register", "/auth/register", "/register", "/api/register"]
+      // Coba berbagai kemungkinan endpoint register
+      const possibleRegisterEndpoints = [
+        "/api/auth/register",
+        "/auth/register",
+        "/register",
+        "/api/register",
+        "/api/user/register", // Berdasarkan routes yang ada
+      ]
 
       let response = null
       let lastError = null
 
-      for (const endpoint of possibleEndpoints) {
+      for (const endpoint of possibleRegisterEndpoints) {
         try {
-          console.log(`🔄 Trying endpoint: ${endpoint}`)
+          console.log(`🔄 Trying register endpoint: ${endpoint}`)
           response = await apiClient.post(endpoint, userData)
-          console.log(`✅ Success with endpoint: ${endpoint}`)
+          console.log(`✅ Success with register endpoint: ${endpoint}`)
           break
         } catch (error) {
-          console.log(`❌ Failed with endpoint: ${endpoint}`)
+          console.log(`❌ Failed with register endpoint: ${endpoint}`)
           lastError = error
           continue
         }
@@ -337,27 +332,29 @@ export const authAPI = {
   },
 }
 
-// Sensor API functions
+// Sensor API functions dengan endpoint discovery
 export const sensorAPI = {
   getLatest: async () => {
     try {
       console.log("📊 Mengambil data sensor terbaru")
 
-      // Coba beberapa endpoint yang mungkin ada
-      const possibleEndpoints = [
+      const possibleSensorEndpoints = [
         "/api/data-sensor/latest",
         "/api/sensor/latest",
         "/sensor/latest",
         "/api/sensors/latest",
+        "/api/data-sensor", // Mungkin endpoint ini mengembalikan data terbaru
+        "/data-sensor/latest",
       ]
 
-      for (const endpoint of possibleEndpoints) {
+      for (const endpoint of possibleSensorEndpoints) {
         try {
+          console.log(`🔄 Trying sensor endpoint: ${endpoint}`)
           const response = await apiClient.get(endpoint)
           console.log(`✅ Success getting sensor data from: ${endpoint}`)
           return response
         } catch (error) {
-          console.log(`❌ Failed with endpoint: ${endpoint}`)
+          console.log(`❌ Failed with sensor endpoint: ${endpoint}`)
           continue
         }
       }
@@ -372,8 +369,25 @@ export const sensorAPI = {
   getHistory: async (limit = 50) => {
     try {
       console.log(`📈 Mengambil riwayat sensor (limit: ${limit})`)
-      const response = await apiClient.get(`/api/data-sensor/history?limit=${limit}`)
-      return response
+
+      const possibleHistoryEndpoints = [
+        `/api/data-sensor/history?limit=${limit}`,
+        `/api/sensor/history?limit=${limit}`,
+        `/api/data-sensor?limit=${limit}`,
+        `/data-sensor/history?limit=${limit}`,
+      ]
+
+      for (const endpoint of possibleHistoryEndpoints) {
+        try {
+          const response = await apiClient.get(endpoint)
+          console.log(`✅ Success getting sensor history from: ${endpoint}`)
+          return response
+        } catch (error) {
+          continue
+        }
+      }
+
+      throw new Error("Semua endpoint sensor history gagal")
     } catch (error) {
       console.error("❌ Error mengambil riwayat sensor:", error)
       throw error
@@ -381,22 +395,22 @@ export const sensorAPI = {
   },
 }
 
-// Device API functions
+// Device API functions dengan endpoint discovery
 export const deviceAPI = {
   getAll: async () => {
     try {
       console.log("🔧 Mengambil semua data device")
 
-      // Coba beberapa endpoint yang mungkin ada
-      const possibleEndpoints = ["/api/device", "/api/devices", "/device", "/devices"]
+      const possibleDeviceEndpoints = ["/api/device", "/api/devices", "/device", "/devices"]
 
-      for (const endpoint of possibleEndpoints) {
+      for (const endpoint of possibleDeviceEndpoints) {
         try {
+          console.log(`🔄 Trying device endpoint: ${endpoint}`)
           const response = await apiClient.get(endpoint)
           console.log(`✅ Success getting devices from: ${endpoint}`)
           return response
         } catch (error) {
-          console.log(`❌ Failed with endpoint: ${endpoint}`)
+          console.log(`❌ Failed with device endpoint: ${endpoint}`)
           continue
         }
       }
@@ -411,8 +425,25 @@ export const deviceAPI = {
   control: async (deviceId, action) => {
     try {
       console.log(`🎛️ Kontrol device ID: ${deviceId} - Action: ${action}`)
-      const response = await apiClient.post(`/api/device/${deviceId}/control`, { action })
-      return response
+
+      const possibleControlEndpoints = [
+        `/api/device/${deviceId}/control`,
+        `/api/devices/${deviceId}/control`,
+        `/device/${deviceId}/control`,
+        `/api/device/${deviceId}`, // PUT request dengan action di body
+      ]
+
+      for (const endpoint of possibleControlEndpoints) {
+        try {
+          const response = await apiClient.post(endpoint, { action })
+          console.log(`✅ Success controlling device via: ${endpoint}`)
+          return response
+        } catch (error) {
+          continue
+        }
+      }
+
+      throw new Error("Semua endpoint device control gagal")
     } catch (error) {
       console.error("❌ Error kontrol device:", error)
       throw error
@@ -420,24 +451,20 @@ export const deviceAPI = {
   },
 }
 
-// Fungsi untuk test koneksi ke backend
+// Fungsi untuk test koneksi dan discover endpoints
 export const testConnection = async () => {
   try {
     console.log("🔍 Testing connection to backend...")
 
-    // Test Railway connection first
-    const railwayConnected = await testRailwayConnection()
-    if (!railwayConnected) {
-      throw new Error("Railway backend tidak dapat diakses")
-    }
-
-    // Coba beberapa endpoint health check
-    const healthEndpoints = ["/api/health", "/health", "/", "/api/status"]
+    // Test berbagai health check endpoints
+    const healthEndpoints = ["/api/health", "/health", "/", "/api", "/api/status"]
 
     for (const endpoint of healthEndpoints) {
       try {
+        console.log(`🔄 Testing endpoint: ${endpoint}`)
         const response = await apiClient.get(endpoint)
         console.log(`✅ Backend connection successful via: ${endpoint}`)
+        console.log("📋 Response data:", response)
         return response
       } catch (error) {
         console.log(`❌ Failed health check: ${endpoint}`)
@@ -445,9 +472,7 @@ export const testConnection = async () => {
       }
     }
 
-    // Jika semua health check gagal, tapi Railway connection berhasil
-    console.log("✅ Backend is online but no health endpoint found")
-    return { status: "online", message: "Backend is accessible" }
+    throw new Error("Semua health check endpoints gagal")
   } catch (error) {
     console.error("❌ Backend connection failed:", error)
     throw error
@@ -455,5 +480,5 @@ export const testConnection = async () => {
 }
 
 // Export semua yang diperlukan
-export { testRailwayConnection }
+export { discoverAvailableEndpoints }
 export default apiClient
