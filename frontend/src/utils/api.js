@@ -13,7 +13,7 @@ const getApiBaseUrl = () => {
 
   if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
     console.log("🏠 Using localhost fallback")
-    return "http://localhost:5000"
+    return "http://localhost:8080" // Sesuaikan dengan port backend lokal
   }
 
   const railwayUrl = "https://monitoring-greenhouse-production.up.railway.app"
@@ -126,41 +126,16 @@ export const clearAuthData = () => {
   localStorage.removeItem("user")
 }
 
-// Auth API functions dengan fallback endpoints
+// Auth API functions - GUNAKAN ENDPOINT YANG BENAR
 export const authAPI = {
   login: async (credentials) => {
     try {
       console.log("🔐 Attempting login...")
       console.log("- Credentials:", { username: credentials.username, password: "[HIDDEN]" })
 
-      let response
-      try {
-        response = await apiClient.post("/api/auth/login", credentials)
-        console.log("✅ Login successful with /api/auth/login")
-      } catch (mainError) {
-        console.log("❌ Main endpoint failed:", mainError.message)
-
-        const alternatives = ["/api/user/login", "/auth/login", "/login", "/api/login"]
-
-        let lastError = mainError
-        for (const endpoint of alternatives) {
-          try {
-            console.log(`🔄 Trying alternative: ${endpoint}`)
-            response = await apiClient.post(endpoint, credentials)
-            console.log(`✅ Login successful with: ${endpoint}`)
-            break
-          } catch (altError) {
-            console.log(`❌ Failed: ${endpoint} - ${altError.message}`)
-            lastError = altError
-          }
-        }
-
-        if (!response) {
-          throw lastError
-        }
-      }
-
-      console.log("✅ Login response:", response)
+      // GUNAKAN ENDPOINT YANG BENAR: /api/auth/login
+      const response = await apiClient.post("/api/auth/login", credentials)
+      console.log("✅ Login successful")
 
       if (response.token) {
         localStorage.setItem("token", response.token)
@@ -183,34 +158,9 @@ export const authAPI = {
       console.log("📝 Attempting registration...")
       console.log("- User data:", { ...userData, password: "[HIDDEN]" })
 
-      let response
-      try {
-        response = await apiClient.post("/api/auth/register", userData)
-        console.log("✅ Registration successful with /api/auth/register")
-      } catch (mainError) {
-        console.log("❌ Main register endpoint failed:", mainError.message)
-
-        const alternatives = ["/api/user/register", "/auth/register", "/register", "/api/register"]
-
-        let lastError = mainError
-        for (const endpoint of alternatives) {
-          try {
-            console.log(`🔄 Trying alternative: ${endpoint}`)
-            response = await apiClient.post(endpoint, userData)
-            console.log(`✅ Registration successful with: ${endpoint}`)
-            break
-          } catch (altError) {
-            console.log(`❌ Failed: ${endpoint} - ${altError.message}`)
-            lastError = altError
-          }
-        }
-
-        if (!response) {
-          throw lastError
-        }
-      }
-
-      console.log("✅ Registration response:", response)
+      // GUNAKAN ENDPOINT YANG BENAR: /api/auth/register
+      const response = await apiClient.post("/api/auth/register", userData)
+      console.log("✅ Registration successful")
       return response
     } catch (error) {
       console.error("❌ Registration failed:", error)
@@ -234,7 +184,6 @@ export const authAPI = {
       console.log("👤 Getting user profile...")
       const response = await apiClient.get("/api/auth/profile")
       console.log("✅ Profile retrieved successfully")
-      console.log("👤 Profile data:", response)
       return response
     } catch (error) {
       console.error("❌ Failed to get profile:", error)
@@ -245,11 +194,8 @@ export const authAPI = {
   updateProfile: async (userData) => {
     try {
       console.log("📝 Updating user profile...")
-      console.log("- User data:", userData)
-
       const response = await apiClient.put("/api/auth/profile", userData)
       console.log("✅ Profile updated successfully")
-      console.log("👤 Updated profile:", response)
       return response
     } catch (error) {
       console.error("❌ Failed to update profile:", error)
@@ -260,254 +206,11 @@ export const authAPI = {
   changePassword: async (passwords) => {
     try {
       console.log("🔑 Changing password...")
-      console.log("- Passwords:", { ...passwords, newPassword: "[HIDDEN]", oldPassword: "[HIDDEN]" })
-
       const response = await apiClient.put("/api/auth/change-password", passwords)
       console.log("✅ Password changed successfully")
-      console.log("🔑 Password change response:", response)
       return response
     } catch (error) {
       console.error("❌ Failed to change password:", error)
-      throw error
-    }
-  },
-}
-
-// Sensor API functions
-export const sensorAPI = {
-  getLatest: async () => {
-    try {
-      console.log("📊 Getting latest sensor data...")
-
-      const endpoints = [
-        "/api/data-sensor/latest",
-        "/api/data-sensor",
-        "/api/sensor/latest",
-        "/api/sensors/latest",
-        "/data-sensor/latest",
-        "/sensor/latest",
-      ]
-
-      let lastError = null
-
-      for (const endpoint of endpoints) {
-        try {
-          console.log(`🔄 Trying sensor endpoint: ${endpoint}`)
-          const response = await apiClient.get(endpoint)
-          console.log(`✅ Sensor data retrieved from: ${endpoint}`)
-          console.log("📊 Sensor data:", response)
-
-          if (Array.isArray(response)) {
-            return response[0] || null
-          }
-
-          return response
-        } catch (error) {
-          console.log(`❌ Failed with sensor endpoint: ${endpoint} - ${error.message}`)
-          lastError = error
-          continue
-        }
-      }
-
-      throw lastError || new Error("Semua endpoint sensor gagal")
-    } catch (error) {
-      console.error("❌ Failed to get sensor data:", error)
-      throw error
-    }
-  },
-
-  getHistory: async (limit = 50) => {
-    try {
-      console.log(`📈 Getting sensor history (limit: ${limit})...`)
-
-      const endpoints = [
-        `/api/data-sensor/history?limit=${limit}`,
-        `/api/data-sensor?limit=${limit}`,
-        `/api/sensor/history?limit=${limit}`,
-        `/data-sensor/history?limit=${limit}`,
-      ]
-
-      for (const endpoint of endpoints) {
-        try {
-          const response = await apiClient.get(endpoint)
-          console.log(`✅ Sensor history retrieved from: ${endpoint}`)
-          return response
-        } catch (error) {
-          continue
-        }
-      }
-
-      throw new Error("Semua endpoint sensor history gagal")
-    } catch (error) {
-      console.error("❌ Failed to get sensor history:", error)
-      throw error
-    }
-  },
-}
-
-// Device API functions - DISESUAIKAN DENGAN BACKEND ROUTES YANG SEBENARNYA
-export const deviceAPI = {
-  getAll: async () => {
-    try {
-      console.log("🔧 Getting all devices...")
-
-      const response = await apiClient.get("/api/device")
-      console.log("✅ Devices retrieved from backend")
-      console.log("🔧 Raw device data:", response)
-
-      // Backend mengembalikan array devices langsung
-      if (Array.isArray(response)) {
-        console.log(`📊 Found ${response.length} devices`)
-        return response
-      }
-
-      // Jika response bukan array, wrap dalam array
-      return response ? [response] : []
-    } catch (error) {
-      console.error("❌ Failed to get devices:", error)
-      throw error
-    }
-  },
-
-  getById: async (deviceId) => {
-    try {
-      console.log(`🔍 Getting device by ID: ${deviceId}`)
-      const response = await apiClient.get(`/api/device/${deviceId}`)
-      console.log("✅ Device retrieved by ID")
-      return response
-    } catch (error) {
-      console.error("❌ Failed to get device by ID:", error)
-      throw error
-    }
-  },
-
-  create: async (deviceData = {}) => {
-    try {
-      console.log("➕ Creating new device...")
-
-      // Data default untuk device baru
-      const defaultData = {
-        lampu: false,
-        ventilasi: "tutup",
-        humidifier: false,
-        kipas: false,
-        pemanas: false,
-        ...deviceData, // Override dengan data yang diberikan
-      }
-
-      console.log("📝 Creating device with data:", defaultData)
-
-      const response = await apiClient.post("/api/device", defaultData)
-      console.log("✅ Device created successfully")
-      console.log("📊 Created device:", response)
-
-      // Backend mengembalikan { message: "...", data: device }
-      return response
-    } catch (error) {
-      console.error("❌ Failed to create device:", error)
-      throw error
-    }
-  },
-
-  update: async (deviceId, deviceData) => {
-    try {
-      console.log(`📝 Updating device ID: ${deviceId}`)
-      console.log("📝 Update data:", deviceData)
-
-      const response = await apiClient.put(`/api/device/${deviceId}`, deviceData)
-      console.log("✅ Device updated successfully")
-      console.log("📊 Updated device:", response)
-
-      // Backend mengembalikan { message: "...", data: device }
-      return response
-    } catch (error) {
-      console.error("❌ Failed to update device:", error)
-      throw error
-    }
-  },
-
-  delete: async (deviceId) => {
-    try {
-      console.log(`🗑️ Deleting device ID: ${deviceId}`)
-      const response = await apiClient.delete(`/api/device/${deviceId}`)
-      console.log("✅ Device deleted successfully")
-      return response
-    } catch (error) {
-      console.error("❌ Failed to delete device:", error)
-      throw error
-    }
-  },
-
-  // Fungsi untuk update semua device sekaligus
-  updateAll: async (controls) => {
-    try {
-      console.log("💾 Updating all device controls...")
-      console.log("📝 Controls to update:", controls)
-
-      // Ambil device yang ada untuk mendapatkan ID
-      const devices = await deviceAPI.getAll()
-      if (devices.length === 0) {
-        throw new Error("Tidak ada device yang ditemukan. Buat device terlebih dahulu.")
-      }
-
-      // Ambil device pertama (biasanya cuma ada satu)
-      const deviceId = devices[0].id
-      console.log(`🎯 Updating device ID: ${deviceId}`)
-
-      // Update device dengan controls yang baru
-      const response = await deviceAPI.update(deviceId, controls)
-      console.log("✅ All device controls updated successfully")
-      return response
-    } catch (error) {
-      console.error("❌ Failed to update all device controls:", error)
-      throw error
-    }
-  },
-
-  // Fungsi untuk kontrol individual device (untuk kompatibilitas)
-  control: async (deviceType, action) => {
-    try {
-      console.log(`🎛️ Controlling device type: ${deviceType}, action: ${action}`)
-
-      // Ambil device yang ada
-      const devices = await deviceAPI.getAll()
-      if (devices.length === 0) {
-        throw new Error("Tidak ada device yang ditemukan")
-      }
-
-      const deviceId = devices[0].id
-      const currentDevice = devices[0]
-
-      // Siapkan data update berdasarkan deviceType dan action
-      const updateData = { ...currentDevice }
-
-      if (deviceType === "lampu") {
-        updateData.lampu = action === "on"
-      } else if (deviceType === "ventilasi") {
-        updateData.ventilasi = action === "on" ? "buka" : "tutup"
-      } else if (deviceType === "humidifier") {
-        updateData.humidifier = action === "on"
-      } else if (deviceType === "kipas") {
-        updateData.kipas = action === "on"
-      } else if (deviceType === "pemanas") {
-        updateData.pemanas = action === "on"
-      } else {
-        throw new Error(`Device type tidak dikenal: ${deviceType}`)
-      }
-
-      // Hapus fields yang tidak perlu untuk update
-      delete updateData.id
-      delete updateData.createdAt
-      delete updateData.updatedAt
-      delete updateData.logs
-
-      console.log(`📝 Updating device with:`, updateData)
-
-      const response = await deviceAPI.update(deviceId, updateData)
-      console.log("✅ Device controlled successfully")
-      return response
-    } catch (error) {
-      console.error("❌ Failed to control device:", error)
       throw error
     }
   },
@@ -518,13 +221,13 @@ export const testConnection = async () => {
   try {
     console.log("🔍 Testing backend connection...")
 
-    const response = await apiClient.get("/")
+    const response = await apiClient.get("/api/health")
     console.log("✅ Backend connection successful")
     return response
   } catch (error) {
     console.error("❌ Backend connection failed:", error)
 
-    const alternatives = ["/api", "/api/health", "/health"]
+    const alternatives = ["/", "/api"]
 
     for (const endpoint of alternatives) {
       try {
