@@ -3,7 +3,7 @@
 import "../styles/jadwal.css"
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import axios from "axios"
+import { penjadwalanAPI } from "../utils/penjadwalan-api"
 import { FiArrowLeft, FiPlus, FiX, FiEdit2, FiTrash2, FiClock, FiCalendar, FiDroplet } from "react-icons/fi"
 
 const Penjadwalan = () => {
@@ -22,8 +22,17 @@ const Penjadwalan = () => {
   // Ambil data jadwal saat komponen dimount
   useEffect(() => {
     document.title = "Penjadwalan Penyiraman - Smart Greenhouse"
+
+    // Cek apakah user sudah login
+    const user = JSON.parse(localStorage.getItem("user"))
+    if (!user) {
+      alert("Anda harus login terlebih dahulu.")
+      navigate("/login")
+      return
+    }
+
     fetchJadwal()
-  }, [])
+  }, [navigate])
 
   // Fungsi untuk mengambil data jadwal dari server
   const fetchJadwal = async () => {
@@ -31,33 +40,12 @@ const Penjadwalan = () => {
       setLoading(true)
       console.log("🔍 Mengambil data jadwal penyiraman...")
 
-      // Menggunakan axios untuk GET request
-      const response = await axios({
-        method: "GET",
-        url: "/api/penjadwalan",
-        timeout: 5000,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      })
-
-      const data = response.data
-
-      // Pastikan jamPenyiraman selalu dalam bentuk array
-      const processedData = data.map((jadwal) => ({
-        ...jadwal,
-        jamPenyiraman: Array.isArray(jadwal.jamPenyiraman)
-          ? jadwal.jamPenyiraman
-          : typeof jadwal.jamPenyiraman === "string"
-            ? JSON.parse(jadwal.jamPenyiraman)
-            : [jadwal.jamPenyiraman].filter(Boolean),
-      }))
-
-      setJadwalList(processedData)
-      console.log("✅ Data jadwal berhasil diambil:", processedData)
+      const data = await penjadwalanAPI.getAll()
+      setJadwalList(data)
+      console.log("✅ Data jadwal berhasil diambil:", data)
     } catch (error) {
       console.error("❌ Error mengambil data jadwal:", error)
-      alert("Gagal mengambil data jadwal")
+      alert("Gagal mengambil data jadwal: " + error.message)
     } finally {
       setLoading(false)
     }
@@ -65,33 +53,9 @@ const Penjadwalan = () => {
 
   // Fungsi untuk validasi form input
   const validateForm = () => {
-    const newErrors = {}
-
-    // Validasi frekuensi penyiraman
-    if (!formData.frekuensiPenyiraman || formData.frekuensiPenyiraman < 1) {
-      newErrors.frekuensiPenyiraman = "Frekuensi harus minimal 1 kali"
-    }
-
-    // Validasi jumlah jam sesuai frekuensi
-    if (formData.jamPenyiraman.length !== formData.frekuensiPenyiraman) {
-      newErrors.jamPenyiraman = `Jumlah jam penyiraman harus sesuai dengan frekuensi (${formData.frekuensiPenyiraman} jam)`
-    }
-
-    // Validasi format jam (HH:MM)
-    const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/
-    const invalidTimes = formData.jamPenyiraman.filter((jam) => !timeRegex.test(jam))
-    if (invalidTimes.length > 0) {
-      newErrors.jamPenyiraman = "Format jam tidak valid (gunakan HH:MM)"
-    }
-
-    // Validasi jam duplikat
-    const uniqueTimes = new Set(formData.jamPenyiraman)
-    if (uniqueTimes.size !== formData.jamPenyiraman.length) {
-      newErrors.jamPenyiraman = "Jam penyiraman tidak boleh duplikat"
-    }
-
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
+    const validation = penjadwalanAPI.validateJadwal(formData)
+    setErrors(validation.errors)
+    return validation.isValid
   }
 
   // Fungsi untuk submit form (create/update)
@@ -105,35 +69,23 @@ const Penjadwalan = () => {
 
     try {
       setLoading(true)
-      const url = editMode ? `/api/penjadwalan/${currentId}` : "/api/penjadwalan"
-      const method = editMode ? "PUT" : "POST"
-
       console.log(`🔄 ${editMode ? "Mengupdate" : "Menyimpan"} jadwal penyiraman...`)
 
-      // Menggunakan axios untuk POST/PUT request
-      const response = await axios({
-        method: method,
-        url: url,
-        data: formData,
-        timeout: 10000,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      })
-
-      const result = response.data
-
-      if (response.status === 200 || response.status === 201) {
-        alert(editMode ? "Jadwal berhasil diupdate" : "Jadwal berhasil disimpan")
-        console.log(`✅ Jadwal berhasil ${editMode ? "diupdate" : "disimpan"}:`, result)
-        fetchJadwal() // Refresh data
-        closeModal() // Tutup modal
+      let result
+      if (editMode) {
+        result = await penjadwalanAPI.update(currentId, formData)
       } else {
-        alert(result.error || "Terjadi kesalahan")
+        result = await penjadwalanAPI.create(formData)
       }
+
+      alert(editMode ? "Jadwal berhasil diupdate" : "Jadwal berhasil disimpan")
+      console.log(`✅ Jadwal berhasil ${editMode ? "diupdate" : "disimpan"}:`, result)
+
+      fetchJadwal() // Refresh data
+      closeModal() // Tutup modal
     } catch (error) {
       console.error("❌ Error menyimpan jadwal:", error)
-      alert(error.response?.data?.error || "Gagal menyimpan data")
+      alert("Gagal menyimpan jadwal: " + error.message)
     } finally {
       setLoading(false)
     }
@@ -150,27 +102,14 @@ const Penjadwalan = () => {
       setLoading(true)
       console.log(`🗑️ Menghapus jadwal dengan ID: ${id}`)
 
-      // Menggunakan axios untuk DELETE request
-      const response = await axios({
-        method: "DELETE",
-        url: `/api/penjadwalan/${id}`,
-        timeout: 5000,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      })
+      await penjadwalanAPI.delete(id)
+      alert("Jadwal berhasil dihapus")
+      console.log("✅ Jadwal berhasil dihapus")
 
-      if (response.status === 200) {
-        alert("Jadwal berhasil dihapus")
-        console.log("✅ Jadwal berhasil dihapus")
-        fetchJadwal() // Refresh data
-      } else {
-        const result = response.data
-        alert(result.error || "Gagal menghapus jadwal")
-      }
+      fetchJadwal() // Refresh data
     } catch (error) {
       console.error("❌ Error menghapus jadwal:", error)
-      alert(error.response?.data?.error || "Gagal menghapus jadwal")
+      alert("Gagal menghapus jadwal: " + error.message)
     } finally {
       setLoading(false)
     }
