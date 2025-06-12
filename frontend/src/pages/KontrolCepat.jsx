@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { deviceAPI } from "../utils/api"
 import "../styles/KontrolCepat.css"
 import {
   FiZap,
