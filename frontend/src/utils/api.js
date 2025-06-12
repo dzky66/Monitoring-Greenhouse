@@ -1,24 +1,40 @@
 import axios from "axios"
 
-// Fungsi untuk mendapatkan base URL API
+// Fungsi untuk mendapatkan base URL API - PERBAIKAN
 const getApiBaseUrl = () => {
-  console.log("🔍 Environment check:")
-  console.log("- VITE_API_URL:", import.meta.env.VITE_API_URL)
-  console.log("- Current hostname:", window.location.hostname)
+  // Gunakan try-catch untuk menghindari error saat build
+  try {
+    console.log("🔍 Environment check:")
 
-  if (import.meta.env.VITE_API_URL) {
-    console.log("✅ Using VITE_API_URL:", import.meta.env.VITE_API_URL)
-    return import.meta.env.VITE_API_URL
+    // Periksa environment variable dengan fallback yang aman
+    const viteApiUrl = import.meta.env?.VITE_API_URL
+    console.log("- VITE_API_URL:", viteApiUrl)
+
+    if (viteApiUrl) {
+      console.log("✅ Using VITE_API_URL:", viteApiUrl)
+      return viteApiUrl
+    }
+
+    // Fallback untuk development - hanya jika window tersedia
+    if (typeof window !== "undefined") {
+      const hostname = window.location.hostname
+      console.log("- Current hostname:", hostname)
+
+      if (hostname === "localhost" || hostname === "127.0.0.1") {
+        console.log("🏠 Using localhost fallback")
+        return "http://localhost:8080"
+      }
+    }
+
+    // Default fallback
+    const railwayUrl = "https://monitoring-greenhouse-production.up.railway.app"
+    console.log("🚂 Using Railway URL:", railwayUrl)
+    return railwayUrl
+  } catch (error) {
+    console.error("Error getting API base URL:", error)
+    // Fallback yang aman jika ada error
+    return "https://monitoring-greenhouse-production.up.railway.app"
   }
-
-  if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
-    console.log("🏠 Using localhost fallback")
-    return "http://localhost:8080" // Port Express.js Anda
-  }
-
-  const railwayUrl = "https://monitoring-greenhouse-production.up.railway.app"
-  console.log("🚂 Using Railway URL:", railwayUrl)
-  return railwayUrl
 }
 
 // Konfigurasi base axios instance
@@ -31,20 +47,26 @@ const apiClient = axios.create({
   },
 })
 
-// Request interceptor
+// Request interceptor dengan error handling yang lebih baik
 apiClient.interceptors.request.use(
   (config) => {
-    console.log("🚀 API Request:")
-    console.log("- Method:", config.method?.toUpperCase())
-    console.log("- URL:", `${config.baseURL}${config.url}`)
+    try {
+      console.log("🚀 API Request:")
+      console.log("- Method:", config.method?.toUpperCase())
+      console.log("- URL:", `${config.baseURL}${config.url}`)
 
-    const token = localStorage.getItem("token")
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
-      console.log("🔑 Token added")
+      // Safely get token
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`
+        console.log("🔑 Token added")
+      }
+
+      return config
+    } catch (error) {
+      console.error("Request interceptor error:", error)
+      return config
     }
-
-    return config
   },
   (error) => {
     console.error("❌ Request Error:", error)
@@ -52,13 +74,18 @@ apiClient.interceptors.request.use(
   },
 )
 
-// Response interceptor
+// Response interceptor dengan error handling yang lebih baik
 apiClient.interceptors.response.use(
   (response) => {
-    console.log("✅ API Response:")
-    console.log("- Status:", response.status)
-    console.log("- Data:", response.data)
-    return response.data
+    try {
+      console.log("✅ API Response:")
+      console.log("- Status:", response.status)
+      console.log("- Data:", response.data)
+      return response.data
+    } catch (error) {
+      console.error("Response interceptor error:", error)
+      return response.data
+    }
   },
   (error) => {
     console.error("❌ API Error:")
@@ -76,7 +103,7 @@ apiClient.interceptors.response.use(
       } else if (status === 401) {
         const isLoginRequest = error.config.url?.includes("/login") || error.config.url?.includes("/auth/login")
 
-        if (!isLoginRequest) {
+        if (!isLoginRequest && typeof window !== "undefined") {
           clearAuthData()
         }
 
@@ -98,15 +125,22 @@ apiClient.interceptors.response.use(
   },
 )
 
-// Helper functions
+// Helper functions dengan safe checks
 export const isAuthenticated = () => {
-  const token = localStorage.getItem("token")
-  const user = localStorage.getItem("user")
-  return !!(token && user)
+  try {
+    if (typeof window === "undefined") return false
+    const token = localStorage.getItem("token")
+    const user = localStorage.getItem("user")
+    return !!(token && user)
+  } catch (error) {
+    console.error("Error checking authentication:", error)
+    return false
+  }
 }
 
 export const getCurrentUser = () => {
   try {
+    if (typeof window === "undefined") return null
     const user = localStorage.getItem("user")
     return user ? JSON.parse(user) : null
   } catch (error) {
@@ -116,8 +150,14 @@ export const getCurrentUser = () => {
 }
 
 export const clearAuthData = () => {
-  localStorage.removeItem("token")
-  localStorage.removeItem("user")
+  try {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("token")
+      localStorage.removeItem("user")
+    }
+  } catch (error) {
+    console.error("Error clearing auth data:", error)
+  }
 }
 
 // Auth API functions
@@ -130,11 +170,11 @@ export const authAPI = {
       const response = await apiClient.post("/api/auth/login", credentials)
       console.log("✅ Login successful")
 
-      if (response.token) {
+      if (response.token && typeof window !== "undefined") {
         localStorage.setItem("token", response.token)
         console.log("🔑 Token saved")
       }
-      if (response.user) {
+      if (response.user && typeof window !== "undefined") {
         localStorage.setItem("user", JSON.stringify(response.user))
         console.log("👤 User data saved")
       }
@@ -197,4 +237,5 @@ export const testConnection = async () => {
   }
 }
 
+// Default export
 export default apiClient

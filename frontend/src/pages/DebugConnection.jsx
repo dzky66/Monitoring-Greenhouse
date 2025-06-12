@@ -1,6 +1,8 @@
+"use client"
+
 import { useState } from "react"
 
-export default function DebugConnection() {
+const DebugConnection = () => {
   const [results, setResults] = useState([])
   const [isLoading, setIsLoading] = useState(false)
 
@@ -13,57 +15,43 @@ export default function DebugConnection() {
     setIsLoading(true)
     setResults([])
 
-    const baseUrl = import.meta.env.VITE_API_URL || "https://monitoring-greenhouse-production.up.railway.app"
+    // Safe environment variable access
+    const baseUrl = import.meta.env?.VITE_API_URL || "https://monitoring-greenhouse-production.up.railway.app"
     addResult(`🔍 Testing connection to: ${baseUrl}`)
 
-    // Test 1: Basic fetch to root
-    try {
-      addResult("📡 Test 1: Fetching root endpoint...")
-      const response = await fetch(baseUrl)
-      const data = await response.json()
-      addResult(`✅ Root endpoint OK: ${response.status}`, "success")
-      addResult(`📄 Response: ${JSON.stringify(data, null, 2)}`)
-    } catch (error) {
-      addResult(`❌ Root endpoint failed: ${error.message}`, "error")
-    }
+    // Test endpoints
+    const endpoints = [
+      { name: "Root", path: "" },
+      { name: "Health", path: "/api/health" },
+      { name: "Login", path: "/api/auth/login", method: "POST" },
+    ]
 
-    // Test 2: Health check
-    try {
-      addResult("📡 Test 2: Fetching health endpoint...")
-      const response = await fetch(`${baseUrl}/api/health`)
-      const data = await response.json()
-      addResult(`✅ Health endpoint OK: ${response.status}`, "success")
-      addResult(`📄 Health data: ${JSON.stringify(data, null, 2)}`)
-    } catch (error) {
-      addResult(`❌ Health endpoint failed: ${error.message}`, "error")
-    }
+    for (const endpoint of endpoints) {
+      try {
+        addResult(`📡 Testing ${endpoint.name} endpoint...`)
 
-    // Test 3: Login endpoint
-    try {
-      addResult("📡 Test 3: Testing login endpoint...")
-      const response = await fetch(`${baseUrl}/api/auth/login`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          username: "test",
-          password: "test",
-        }),
-      })
-      const data = await response.json()
-      addResult(`📡 Login endpoint response: ${response.status}`)
-      addResult(`📄 Login response: ${JSON.stringify(data, null, 2)}`)
+        const options = {
+          method: endpoint.method || "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
 
-      if (response.status === 401) {
-        addResult("✅ Login endpoint working (401 expected for wrong credentials)", "success")
-      } else if (response.status === 200) {
-        addResult("✅ Login endpoint working (200 - credentials accepted)", "success")
-      } else {
-        addResult(`⚠️ Login endpoint returned: ${response.status}`, "warning")
+        if (endpoint.method === "POST") {
+          options.body = JSON.stringify({
+            username: "test",
+            password: "test",
+          })
+        }
+
+        const response = await fetch(`${baseUrl}${endpoint.path}`, options)
+        const data = await response.json()
+
+        addResult(`✅ ${endpoint.name} endpoint OK: ${response.status}`, "success")
+        addResult(`📄 Response: ${JSON.stringify(data, null, 2)}`)
+      } catch (error) {
+        addResult(`❌ ${endpoint.name} endpoint failed: ${error.message}`, "error")
       }
-    } catch (error) {
-      addResult(`❌ Login endpoint failed: ${error.message}`, "error")
     }
 
     setIsLoading(false)
@@ -83,7 +71,7 @@ export default function DebugConnection() {
   }
 
   // Hanya tampil di development
-  if (import.meta.env.PROD) return null
+  if (import.meta.env?.PROD) return null
 
   return (
     <div style={{ padding: "20px", maxWidth: "800px", margin: "0 auto" }}>
@@ -92,10 +80,10 @@ export default function DebugConnection() {
       <div style={{ marginBottom: "20px" }}>
         <p>
           <strong>Backend URL:</strong>{" "}
-          {import.meta.env.VITE_API_URL || "https://monitoring-greenhouse-production.up.railway.app"}
+          {import.meta.env?.VITE_API_URL || "https://monitoring-greenhouse-production.up.railway.app"}
         </p>
         <p>
-          <strong>Environment:</strong> {import.meta.env.DEV ? "Development" : "Production"}
+          <strong>Environment:</strong> {import.meta.env?.DEV ? "Development" : "Production"}
         </p>
       </div>
 
@@ -166,3 +154,5 @@ export default function DebugConnection() {
     </div>
   )
 }
+
+export default DebugConnection
