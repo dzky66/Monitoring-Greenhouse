@@ -197,7 +197,7 @@ export default function LoginRegister() {
       } else if (errorMsg.includes("User already exists") || errorMsg.includes("Username sudah ada")) {
         errorMsg = "Username sudah digunakan, silakan pilih username lain"
       } else if (errorMsg.includes("tidak ditemukan")) {
-        errorMsg = "Endpoint tidak ditemukan. Periksa konfigurasi backend."
+        errorMsg = "aduh bintang asu bintang asu."
       } else if (errorMsg.includes("Akses ditolak") || errorMsg.includes("CORS")) {
         errorMsg = "Akses ditolak. Periksa konfigurasi CORS di backend."
       } else if (errorMsg.includes("tidak dapat terhubung")) {
