@@ -3,7 +3,7 @@
 import "../styles/jadwal.css"
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { penjadwalanAPI } from "../utils/penjadwalan-api"
+import { penjadwalanAPI } from "../utils/penjadwalanapi"
 import { FiArrowLeft, FiPlus, FiX, FiEdit2, FiTrash2, FiClock, FiCalendar, FiDroplet } from "react-icons/fi"
 
 const Penjadwalan = () => {
