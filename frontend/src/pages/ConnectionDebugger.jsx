@@ -1,5 +1,3 @@
-"use client"
-
 import { useState } from "react"
 
 export default function DebugConnection() {
@@ -40,7 +38,7 @@ export default function DebugConnection() {
       addResult(`❌ Health endpoint failed: ${error.message}`, "error")
     }
 
-    // Test 3: Login endpoint (POST with dummy data)
+    // Test 3: Login endpoint
     try {
       addResult("📡 Test 3: Testing login endpoint...")
       const response = await fetch(`${baseUrl}/api/auth/login`, {
@@ -68,67 +66,6 @@ export default function DebugConnection() {
       addResult(`❌ Login endpoint failed: ${error.message}`, "error")
     }
 
-    // Test 4: CORS preflight
-    try {
-      addResult("📡 Test 4: Testing CORS preflight...")
-      const response = await fetch(`${baseUrl}/api/auth/login`, {
-        method: "OPTIONS",
-        headers: {
-          "Access-Control-Request-Method": "POST",
-          "Access-Control-Request-Headers": "Content-Type",
-        },
-      })
-      addResult(`✅ CORS preflight OK: ${response.status}`, "success")
-    } catch (error) {
-      addResult(`❌ CORS preflight failed: ${error.message}`, "error")
-    }
-
-    setIsLoading(false)
-  }
-
-  const testWithAxios = async () => {
-    setIsLoading(true)
-    setResults([])
-
-    try {
-      // Import axios dynamically
-      const axios = (await import("axios")).default
-
-      const baseUrl = import.meta.env.VITE_API_URL || "https://monitoring-greenhouse-production.up.railway.app"
-      addResult(`🔍 Testing with Axios to: ${baseUrl}`)
-
-      const client = axios.create({
-        baseURL: baseUrl,
-        timeout: 10000,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      })
-
-      // Test login with axios
-      try {
-        addResult("📡 Testing login with Axios...")
-        const response = await client.post("/api/auth/login", {
-          username: "test",
-          password: "test",
-        })
-        addResult(`✅ Axios login OK: ${response.status}`, "success")
-        addResult(`📄 Axios response: ${JSON.stringify(response.data, null, 2)}`)
-      } catch (error) {
-        if (error.response) {
-          addResult(`📡 Axios got response: ${error.response.status}`)
-          addResult(`📄 Axios error data: ${JSON.stringify(error.response.data, null, 2)}`)
-          if (error.response.status === 401) {
-            addResult("✅ Axios login endpoint working (401 expected)", "success")
-          }
-        } else {
-          addResult(`❌ Axios request failed: ${error.message}`, "error")
-        }
-      }
-    } catch (error) {
-      addResult(`❌ Axios test failed: ${error.message}`, "error")
-    }
-
     setIsLoading(false)
   }
 
@@ -144,6 +81,9 @@ export default function DebugConnection() {
         return "#333"
     }
   }
+
+  // Hanya tampil di development
+  if (import.meta.env.PROD) return null
 
   return (
     <div style={{ padding: "20px", maxWidth: "800px", margin: "0 auto" }}>
@@ -172,22 +112,7 @@ export default function DebugConnection() {
             cursor: isLoading ? "not-allowed" : "pointer",
           }}
         >
-          {isLoading ? "Testing..." : "Test Direct Fetch"}
-        </button>
-
-        <button
-          onClick={testWithAxios}
-          disabled={isLoading}
-          style={{
-            padding: "10px 20px",
-            backgroundColor: "#4CAF50",
-            color: "white",
-            border: "none",
-            borderRadius: "5px",
-            cursor: isLoading ? "not-allowed" : "pointer",
-          }}
-        >
-          {isLoading ? "Testing..." : "Test with Axios"}
+          {isLoading ? "Testing..." : "Test Connection"}
         </button>
 
         <button

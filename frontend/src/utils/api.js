@@ -13,7 +13,7 @@ const getApiBaseUrl = () => {
 
   if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
     console.log("🏠 Using localhost fallback")
-    return "http://localhost:8080" // Sesuaikan dengan port backend lokal
+    return "http://localhost:8080" // Port Express.js Anda
   }
 
   const railwayUrl = "https://monitoring-greenhouse-production.up.railway.app"
@@ -80,12 +80,6 @@ apiClient.interceptors.response.use(
           clearAuthData()
         }
 
-        if (!isLoginRequest && window.location.pathname !== "/login") {
-          setTimeout(() => {
-            window.location.href = "/login"
-          }, 1000)
-        }
-
         throw new Error(
           isLoginRequest ? "Username atau password salah" : "Sesi Anda telah berakhir. Silakan login kembali.",
         )
@@ -126,14 +120,13 @@ export const clearAuthData = () => {
   localStorage.removeItem("user")
 }
 
-// Auth API functions - GUNAKAN ENDPOINT YANG BENAR
+// Auth API functions
 export const authAPI = {
   login: async (credentials) => {
     try {
       console.log("🔐 Attempting login...")
       console.log("- Credentials:", { username: credentials.username, password: "[HIDDEN]" })
 
-      // GUNAKAN ENDPOINT YANG BENAR: /api/auth/login
       const response = await apiClient.post("/api/auth/login", credentials)
       console.log("✅ Login successful")
 
@@ -158,7 +151,6 @@ export const authAPI = {
       console.log("📝 Attempting registration...")
       console.log("- User data:", { ...userData, password: "[HIDDEN]" })
 
-      // GUNAKAN ENDPOINT YANG BENAR: /api/auth/register
       const response = await apiClient.post("/api/auth/register", userData)
       console.log("✅ Registration successful")
       return response
@@ -190,55 +182,17 @@ export const authAPI = {
       throw error
     }
   },
-
-  updateProfile: async (userData) => {
-    try {
-      console.log("📝 Updating user profile...")
-      const response = await apiClient.put("/api/auth/profile", userData)
-      console.log("✅ Profile updated successfully")
-      return response
-    } catch (error) {
-      console.error("❌ Failed to update profile:", error)
-      throw error
-    }
-  },
-
-  changePassword: async (passwords) => {
-    try {
-      console.log("🔑 Changing password...")
-      const response = await apiClient.put("/api/auth/change-password", passwords)
-      console.log("✅ Password changed successfully")
-      return response
-    } catch (error) {
-      console.error("❌ Failed to change password:", error)
-      throw error
-    }
-  },
 }
 
 // Test connection function
 export const testConnection = async () => {
   try {
     console.log("🔍 Testing backend connection...")
-
     const response = await apiClient.get("/api/health")
     console.log("✅ Backend connection successful")
     return response
   } catch (error) {
     console.error("❌ Backend connection failed:", error)
-
-    const alternatives = ["/", "/api"]
-
-    for (const endpoint of alternatives) {
-      try {
-        const response = await apiClient.get(endpoint)
-        console.log(`✅ Backend connected via: ${endpoint}`)
-        return response
-      } catch (altError) {
-        continue
-      }
-    }
-
     throw error
   }
 }
