@@ -135,10 +135,17 @@ export default function LoginRegister() {
         )
         console.log("- Username:", formData.username)
 
-        const response = await authAPI.login({
+        // Ubah format data login sesuai dengan yang diharapkan backend
+        const loginData = {
           username: formData.username,
           password: formData.password,
-        })
+          // Tambahkan field yang mungkin dibutuhkan backend
+          // Contoh: device_name: "web-client"
+        }
+
+        console.log("📤 Sending login data:", { ...loginData, password: "[HIDDEN]" })
+
+        const response = await authAPI.login(loginData)
 
         console.log("✅ Login response received:", response)
 

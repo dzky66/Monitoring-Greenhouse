@@ -21,30 +21,6 @@ const getApiBaseUrl = () => {
   return railwayUrl
 }
 
-// Tambahkan fungsi helper untuk test multiple ports
-const testMultiplePorts = async () => {
-  const ports = [8080, 5000, 3001, 3000]
-
-  for (const port of ports) {
-    try {
-      const testUrl = `http://localhost:${port}`
-      const response = await fetch(`${testUrl}/api/health`, {
-        method: "GET",
-        timeout: 5000,
-      })
-      if (response.ok) {
-        console.log(`✅ Backend ditemukan di port ${port}`)
-        return testUrl
-      }
-    } catch (error) {
-      console.log(`❌ Port ${port} tidak tersedia`)
-      continue
-    }
-  }
-
-  throw new Error("Backend tidak ditemukan di port manapun")
-}
-
 // Konfigurasi base axios instance
 const apiClient = axios.create({
   baseURL: getApiBaseUrl(),
@@ -61,6 +37,14 @@ apiClient.interceptors.request.use(
     console.log("🚀 API Request:")
     console.log("- Method:", config.method?.toUpperCase())
     console.log("- URL:", `${config.baseURL}${config.url}`)
+    console.log("- Headers:", config.headers)
+    
+    // Log request body untuk debugging (kecuali password)
+    if (config.data) {
+      const logData = { ...config.data }
+      if (logData.password) logData.password = "[HIDDEN]"
+      console.log("- Data:", logData)
+    }
 
     const token = localStorage.getItem("token")
     if (token) {
@@ -91,6 +75,7 @@ apiClient.interceptors.response.use(
     if (error.response) {
       console.error("- Status:", error.response.status)
       console.error("- Data:", error.response.data)
+      console.error("- Headers:", error.response.headers)
 
       const status = error.response.status
       const message = error.response.data?.message || error.response.data?.error || "Terjadi kesalahan pada server"
@@ -157,19 +142,51 @@ export const authAPI = {
       console.log("🔐 Attempting login...")
       console.log("- Credentials:", { username: credentials.username, password: "[HIDDEN]" })
 
+      // Tambahkan debugging untuk format data
+      console.log("- Request format:", JSON.stringify(credentials))
+
       let response
       try {
+        // Coba dengan format credentials langsung
         response = await apiClient.post("/api/auth/login", credentials)
         console.log("✅ Login successful with /api/auth/login")
       } catch (mainError) {
         console.log("❌ Main endpoint failed:", mainError.message)
+        
+        // Jika gagal, coba dengan format yang berbeda
+        if (mainError.response && mainError.response.status === 401) {
+          console.log("🔄 Trying with different request format...")
+          
+          try {
+            // Format alternatif 1: { user: { username, password } }
+            const altFormat1 = { user: { username: credentials.username, password: credentials.password } }
+            console.log("- Trying format:", JSON.stringify({ user: { username: credentials.username, password: "[HIDDEN]" } }))
+            response = await apiClient.post("/api/auth/login", altFormat1)
+            console.log("✅ Login successful with alternative format 1")
+            return response
+          } catch (altError1) {
+            console.log("❌ Alternative format 1 failed:", altError1.message)
+            
+            try {
+              // Format alternatif 2: { email sebagai username }
+              const altFormat2 = { email: credentials.username, password: credentials.password }
+              console.log("- Trying format:", JSON.stringify({ email: credentials.username, password: "[HIDDEN]" }))
+              response = await apiClient.post("/api/auth/login", altFormat2)
+              console.log("✅ Login successful with alternative format 2")
+              return response
+            } catch (altError2) {
+              console.log("❌ Alternative format 2 failed:", altError2.message)
+            }
+          }
+        }
 
+        // Jika semua format gagal, coba endpoint alternatif
         const alternatives = ["/api/user/login", "/auth/login", "/login"]
 
         let lastError = mainError
         for (const endpoint of alternatives) {
           try {
-            console.log(`🔄 Trying alternative: ${endpoint}`)
+            console.log(`🔄 Trying alternative endpoint: ${endpoint}`)
             response = await apiClient.post(endpoint, credentials)
             console.log(`✅ Login successful with: ${endpoint}`)
             break
@@ -297,246 +314,6 @@ export const authAPI = {
   },
 }
 
-// Sensor API functions
-export const sensorAPI = {
-  getLatest: async () => {
-    try {
-      console.log("📊 Getting latest sensor data...")
-
-      const endpoints = [
-        "/api/data-sensor/latest",
-        "/api/data-sensor",
-        "/api/sensor/latest",
-        "/api/sensors/latest",
-        "/data-sensor/latest",
-        "/sensor/latest",
-      ]
-
-      let lastError = null
-
-      for (const endpoint of endpoints) {
-        try {
-          console.log(`🔄 Trying sensor endpoint: ${endpoint}`)
-          const response = await apiClient.get(endpoint)
-          console.log(`✅ Sensor data retrieved from: ${endpoint}`)
-          console.log("📊 Sensor data:", response)
-
-          if (Array.isArray(response)) {
-            return response[0] || null
-          }
-
-          return response
-        } catch (error) {
-          console.log(`❌ Failed with sensor endpoint: ${endpoint} - ${error.message}`)
-          lastError = error
-          continue
-        }
-      }
-
-      throw lastError || new Error("Semua endpoint sensor gagal")
-    } catch (error) {
-      console.error("❌ Failed to get sensor data:", error)
-      throw error
-    }
-  },
-
-  getHistory: async (limit = 50) => {
-    try {
-      console.log(`📈 Getting sensor history (limit: ${limit})...`)
-
-      const endpoints = [
-        `/api/data-sensor/history?limit=${limit}`,
-        `/api/data-sensor?limit=${limit}`,
-        `/api/sensor/history?limit=${limit}`,
-        `/data-sensor/history?limit=${limit}`,
-      ]
-
-      for (const endpoint of endpoints) {
-        try {
-          const response = await apiClient.get(endpoint)
-          console.log(`✅ Sensor history retrieved from: ${endpoint}`)
-          return response
-        } catch (error) {
-          continue
-        }
-      }
-
-      throw new Error("Semua endpoint sensor history gagal")
-    } catch (error) {
-      console.error("❌ Failed to get sensor history:", error)
-      throw error
-    }
-  },
-}
-
-// Device API functions - DISESUAIKAN DENGAN BACKEND ROUTES YANG SEBENARNYA
-export const deviceAPI = {
-  getAll: async () => {
-    try {
-      console.log("🔧 Getting all devices...")
-
-      const response = await apiClient.get("/api/device")
-      console.log("✅ Devices retrieved from backend")
-      console.log("🔧 Raw device data:", response)
-
-      // Backend mengembalikan array devices langsung
-      if (Array.isArray(response)) {
-        console.log(`📊 Found ${response.length} devices`)
-        return response
-      }
-
-      // Jika response bukan array, wrap dalam array
-      return response ? [response] : []
-    } catch (error) {
-      console.error("❌ Failed to get devices:", error)
-      throw error
-    }
-  },
-
-  getById: async (deviceId) => {
-    try {
-      console.log(`🔍 Getting device by ID: ${deviceId}`)
-      const response = await apiClient.get(`/api/device/${deviceId}`)
-      console.log("✅ Device retrieved by ID")
-      return response
-    } catch (error) {
-      console.error("❌ Failed to get device by ID:", error)
-      throw error
-    }
-  },
-
-  create: async (deviceData = {}) => {
-    try {
-      console.log("➕ Creating new device...")
-
-      // Data default untuk device baru
-      const defaultData = {
-        lampu: false,
-        ventilasi: "tutup",
-        humidifier: false,
-        kipas: false,
-        pemanas: false,
-        ...deviceData, // Override dengan data yang diberikan
-      }
-
-      console.log("📝 Creating device with data:", defaultData)
-
-      const response = await apiClient.post("/api/device", defaultData)
-      console.log("✅ Device created successfully")
-      console.log("📊 Created device:", response)
-
-      // Backend mengembalikan { message: "...", data: device }
-      return response
-    } catch (error) {
-      console.error("❌ Failed to create device:", error)
-      throw error
-    }
-  },
-
-  update: async (deviceId, deviceData) => {
-    try {
-      console.log(`📝 Updating device ID: ${deviceId}`)
-      console.log("📝 Update data:", deviceData)
-
-      const response = await apiClient.put(`/api/device/${deviceId}`, deviceData)
-      console.log("✅ Device updated successfully")
-      console.log("📊 Updated device:", response)
-
-      // Backend mengembalikan { message: "...", data: device }
-      return response
-    } catch (error) {
-      console.error("❌ Failed to update device:", error)
-      throw error
-    }
-  },
-
-  delete: async (deviceId) => {
-    try {
-      console.log(`🗑️ Deleting device ID: ${deviceId}`)
-      const response = await apiClient.delete(`/api/device/${deviceId}`)
-      console.log("✅ Device deleted successfully")
-      return response
-    } catch (error) {
-      console.error("❌ Failed to delete device:", error)
-      throw error
-    }
-  },
-
-  // Fungsi untuk update semua device sekaligus
-  updateAll: async (controls) => {
-    try {
-      console.log("💾 Updating all device controls...")
-      console.log("📝 Controls to update:", controls)
-
-      // Ambil device yang ada untuk mendapatkan ID
-      const devices = await deviceAPI.getAll()
-      if (devices.length === 0) {
-        throw new Error("Tidak ada device yang ditemukan. Buat device terlebih dahulu.")
-      }
-
-      // Ambil device pertama (biasanya cuma ada satu)
-      const deviceId = devices[0].id
-      console.log(`🎯 Updating device ID: ${deviceId}`)
-
-      // Update device dengan controls yang baru
-      const response = await deviceAPI.update(deviceId, controls)
-      console.log("✅ All device controls updated successfully")
-      return response
-    } catch (error) {
-      console.error("❌ Failed to update all device controls:", error)
-      throw error
-    }
-  },
-
-  // Fungsi untuk kontrol individual device (untuk kompatibilitas)
-  control: async (deviceType, action) => {
-    try {
-      console.log(`🎛️ Controlling device type: ${deviceType}, action: ${action}`)
-
-      // Ambil device yang ada
-      const devices = await deviceAPI.getAll()
-      if (devices.length === 0) {
-        throw new Error("Tidak ada device yang ditemukan")
-      }
-
-      const deviceId = devices[0].id
-      const currentDevice = devices[0]
-
-      // Siapkan data update berdasarkan deviceType dan action
-      const updateData = { ...currentDevice }
-
-      if (deviceType === "lampu") {
-        updateData.lampu = action === "on"
-      } else if (deviceType === "ventilasi") {
-        updateData.ventilasi = action === "on" ? "buka" : "tutup"
-      } else if (deviceType === "humidifier") {
-        updateData.humidifier = action === "on"
-      } else if (deviceType === "kipas") {
-        updateData.kipas = action === "on"
-      } else if (deviceType === "pemanas") {
-        updateData.pemanas = action === "on"
-      } else {
-        throw new Error(`Device type tidak dikenal: ${deviceType}`)
-      }
-
-      // Hapus fields yang tidak perlu untuk update
-      delete updateData.id
-      delete updateData.createdAt
-      delete updateData.updatedAt
-      delete updateData.logs
-
-      console.log(`📝 Updating device with:`, updateData)
-
-      const response = await deviceAPI.update(deviceId, updateData)
-      console.log("✅ Device controlled successfully")
-      return response
-    } catch (error) {
-      console.error("❌ Failed to control device:", error)
-      throw error
-    }
-  },
-}
-
 // Test connection function
 export const testConnection = async () => {
   try {
@@ -560,6 +337,22 @@ export const testConnection = async () => {
       }
     }
 
+    throw error
+  }
+}
+
+// Fungsi untuk memeriksa format API yang diharapkan
+export const checkApiFormat = async () => {
+  try {
+    console.log("🔍 Checking API format...")
+    
+    // Coba ambil info API untuk melihat format yang diharapkan
+    const response = await apiClient.get("/api")
+    console.log("✅ API info retrieved:", response)
+    
+    return response
+  } catch (error) {
+    console.error("❌ Failed to check API format:", error)
     throw error
   }
 }
