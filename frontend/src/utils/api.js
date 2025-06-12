@@ -164,7 +164,7 @@ export const authAPI = {
       } catch (mainError) {
         console.log("❌ Main endpoint failed:", mainError.message)
 
-        const alternatives = ["/api/user/login", "/auth/login", "/login", "/api/login"]
+        const alternatives = ["/api/user/login", "/auth/login", "/login"]
 
         let lastError = mainError
         for (const endpoint of alternatives) {
@@ -214,7 +214,7 @@ export const authAPI = {
       } catch (mainError) {
         console.log("❌ Main register endpoint failed:", mainError.message)
 
-        const alternatives = ["/api/user/register", "/auth/register", "/register", "/api/register"]
+        const alternatives = ["/api/user/register", "/auth/register", "/register"]
 
         let lastError = mainError
         for (const endpoint of alternatives) {
