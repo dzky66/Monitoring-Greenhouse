@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import axios from "axios"
 import "../styles/Dashboard.css"
+import { sensorAPI } from "../utils/sensor-api"
 import {
   FiHome,
   FiActivity,
@@ -70,83 +70,43 @@ const Dashboard = () => {
     try {
       setLoading(true)
 
-    const possibleEndpoints = [
-  "https://monitoring-greenhouse-production.up.railway.app/api/data-sensor/latest",
-  `${window.location.origin}/api/data-sensor/latest`
-];
+      // Gunakan fungsi khusus dashboard dari sensor API
+      const result = await sensorAPI.getLatestForDashboard()
 
-
-      let response = null
-      let data = null
-      let workingEndpoint = null
-
-      // Coba setiap endpoint sampai ada yang berhasil
-      for (const endpoint of possibleEndpoints) {
-        try {
-          console.log(`🔄 Mencoba endpoint: ${endpoint}`)
-
-          // Konfigurasi axios dengan timeout
-          const axiosConfig = {
-            method: "GET",
-            url: endpoint,
-            headers: {
-              "Content-Type": "application/json",
-            },
-            timeout: 5000, // 5 detik timeout
-          }
-
-          response = await axios(axiosConfig)
-
-          if (response.status === 200 && response.data) {
-            data = response.data
-            workingEndpoint = endpoint
-            console.log(`✅ Berhasil dengan endpoint: ${endpoint}`, data)
-            break
-          } else {
-            console.log(`❌ Gagal endpoint: ${endpoint} - Status: ${response.status}`)
-          }
-        } catch (err) {
-          console.log(`❌ Error endpoint: ${endpoint} - ${err.message}`)
-          continue
-        }
-      }
-
-      if (data && workingEndpoint) {
-        setApiEndpoint(workingEndpoint)
+      if (result.success && result.data) {
+        setApiEndpoint(result.endpoint)
         setIsOnline(true)
+        setLastUpdate(result.timestamp)
 
-        // Set waktu update terakhir
-        setLastUpdate(new Date(data.waktu || data.createdAt || new Date()))
-
-        // Transform data sesuai format backend baru dengan kelembapan_udara dan kelembapan_tanah
+        // Transform data sesuai format backend dengan kelembapan_udara dan kelembapan_tanah
         const transformedData = [
           {
             title: "Suhu",
-            value: `${data.suhu}°C`,
+            value: `${result.data.suhu}°C`,
             icon: FiThermometer,
             color: "#ff5722",
-            rawValue: data.suhu,
+            rawValue: result.data.suhu,
           },
           {
             title: "Kelembapan Udara",
-            value: `${data.kelembapan_udara}%`,
+            value: `${result.data.kelembapan_udara}%`,
             icon: FiDroplet,
             color: "#2196f3",
-            rawValue: data.kelembapan_udara,
+            rawValue: result.data.kelembapan_udara,
           },
           {
             title: "Kelembapan Tanah",
-            value: `${data.kelembapan_tanah}%`,
+            value: `${result.data.kelembapan_tanah}%`,
             icon: FiDroplet,
             color: "#8bc34a",
-            rawValue: data.kelembapan_tanah,
+            rawValue: result.data.kelembapan_tanah,
           },
           {
             title: "Cahaya",
-            value: `${data.cahaya} lux`,
+            value: `${result.data.cahaya} lux`,
             icon: FiSun,
             color: "#ffc107",
-            rawValue: data.cahaya,
+            rawValue: result.data.cahaya,
           },
           {
             title: "Sistem",
@@ -159,7 +119,7 @@ const Dashboard = () => {
 
         setSensorData(transformedData)
       } else {
-        throw new Error("Tidak ada endpoint API yang berfungsi")
+        throw new Error("Tidak berhasil mengambil data sensor")
       }
     } catch (error) {
       console.error("❌ Error mengambil data sensor:", error)
@@ -418,7 +378,7 @@ const Dashboard = () => {
             {!isOnline && (
               <div className="api-help">
                 <FiAlertTriangle />
-                <span>Pastikan backend server berjalan di port 5000 dan database terhubung</span>
+                <span>Pastikan backend server berjalan di port 8080 dan database terhubung</span>
               </div>
             )}
           </div>
@@ -444,7 +404,7 @@ const Dashboard = () => {
                 <FiActivity className="info-icon" />
                 <div className="info-content">
                   <h4>Sistem Monitoring Aktif</h4>
-                  <p>Data sensor yang ditampilkan diperbarui otomatis setiap 10 detik menggunakan Axios</p>
+                  <p>Data sensor yang ditampilkan diperbarui otomatis setiap 10 detik menggunakan Sensor API</p>
                 </div>
               </div>
             </div>
