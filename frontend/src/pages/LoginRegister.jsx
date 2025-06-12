@@ -21,9 +21,6 @@ import {
   FiMail,
 } from "react-icons/fi"
 
-// Tambahkan import ConnectionTest di bagian atas:
-import ConnectionTest from "./ConnectionTest"
-
 export default function LoginRegister() {
   const navigate = useNavigate()
   const [isLogin, setIsLogin] = useState(true)
