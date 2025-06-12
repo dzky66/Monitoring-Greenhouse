@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import "../styles/PrediksiHasil.css"
-import { prediksiAPI } from "../utils/prediksi-api"
+import { prediksiAPI } from "../utils/prediksiapi"
 import {
   FiArrowLeft,
   FiBarChart2,
