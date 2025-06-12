@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { testConnection, discoverAvailableEndpoints } from "../utils/api"
+import { testConnection, discoverAvailableEndpoints } from "./utils/api"
 
 export default function EndpointDebugger() {
   const [debugInfo, setDebugInfo] = useState("")

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import "../styles/Monitoring.css"
 import { useNavigate } from "react-router-dom"
+import { monitoringAPI } from "../utils/monitoringapi"
 import {
   FiArrowLeft,
   FiThermometer,
@@ -26,6 +27,7 @@ const Monitoring = () => {
   const [loading, setLoading] = useState(true)
   const [isOnline, setIsOnline] = useState(true)
   const [lastUpdate, setLastUpdate] = useState(null)
+  const [apiEndpoint, setApiEndpoint] = useState(null)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -52,80 +54,24 @@ const Monitoring = () => {
       setLoading(true)
       console.log("🔍 Fetching monitoring data...")
 
-      // Dapatkan token dari localStorage
-      const token = localStorage.getItem("token")
-      const headers = token ? { Authorization: `Bearer ${token}` } : {}
+      // Gunakan monitoring API dengan fallback
+      const result = await monitoringAPI.getMonitoringDataWithFallback()
 
-      // Coba endpoint monitoring terlebih dahulu, jika gagal gunakan data sensor
-      const baseUrl = import.meta.env.VITE_API_URL || "https://monitoring-greenhouse-production.up.railway.app"
-
-      const endpoints = [
-        `${baseUrl}/api/monitoring`,
-        `${baseUrl}/api/data-sensor/latest`,
-        "/api/monitoring",
-        "/api/data-sensor/latest",
-      ]
-
-      let response = null
-      let fetchedData = null
-
-      // Coba setiap endpoint sampai ada yang berhasil
-      for (const endpoint of endpoints) {
-        try {
-          console.log(`🔍 Mencoba endpoint monitoring: ${endpoint}`)
-
-          // Menggunakan fetch API dengan timeout
-          const controller = new AbortController()
-          const timeoutId = setTimeout(() => controller.abort(), 5000)
-
-          response = await fetch(endpoint, {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-              ...headers,
-            },
-            signal: controller.signal,
-          })
-
-          clearTimeout(timeoutId)
-
-          if (response.ok) {
-            fetchedData = await response.json()
-            console.log(`✅ Berhasil mengambil data dari: ${endpoint}`)
-            console.log("📊 Data:", fetchedData)
-            break
-          }
-        } catch (err) {
-          console.log(`❌ Gagal endpoint: ${endpoint} - ${err.message}`)
-          continue
-        }
-      }
-
-      if (fetchedData) {
-        // Jika data dari endpoint monitoring (sudah ada analisis)
-        if (fetchedData.status && fetchedData.rekomendasi) {
-          // Pastikan status dan rekomendasi dalam bentuk array
-          if (!Array.isArray(fetchedData.status)) {
-            fetchedData.status = fetchedData.status.split("; ")
-          }
-          if (!Array.isArray(fetchedData.rekomendasi)) {
-            fetchedData.rekomendasi = fetchedData.rekomendasi.split("; ")
-          }
-
-          setData(fetchedData)
-        } else {
-          // Jika data dari data sensor, buat analisis sendiri
-          const analysisData = analyzeData(fetchedData)
-          setData(analysisData)
-        }
+      if (result.success && result.data) {
+        setData(result.data)
+        setApiEndpoint(result.endpoint)
         setIsOnline(true)
         setLastUpdate(new Date())
+        console.log("✅ Monitoring data loaded successfully")
+        console.log("📊 Data source:", result.source)
+        console.log("🔗 Endpoint:", result.endpoint)
       } else {
-        throw new Error("Tidak ada endpoint yang tersedia")
+        throw new Error("Tidak berhasil mengambil data monitoring")
       }
     } catch (error) {
       console.error("❌ Error mengambil data monitoring:", error)
       setIsOnline(false)
+      setApiEndpoint(null)
 
       // Set data error untuk ditampilkan
       setData({
@@ -139,100 +85,6 @@ const Monitoring = () => {
       })
     } finally {
       setLoading(false)
-    }
-  }
-
-  // Fungsi untuk menganalisis data sensor dan memberikan rekomendasi
-  const analyzeData = (sensorData) => {
-    const suhu = sensorData.suhu
-    const kelembapan_udara = sensorData.kelembapan_udara || sensorData.kelembapan // fallback untuk data lama
-    const kelembapan_tanah = sensorData.kelembapan_tanah || sensorData.kelembapan // fallback untuk data lama
-    const cahaya = sensorData.cahaya
-
-    const status = []
-    const rekomendasi = []
-
-    // Analisis Suhu (Range optimal: 20-30°C)
-    if (suhu < 15) {
-      status.push("Suhu terlalu rendah")
-      rekomendasi.push("Aktifkan pemanas atau tutup ventilasi")
-    } else if (suhu > 35) {
-      status.push("Suhu terlalu tinggi")
-      rekomendasi.push("Buka ventilasi atau aktifkan kipas")
-    } else if (suhu >= 20 && suhu <= 30) {
-      status.push("Suhu optimal")
-    } else {
-      status.push("Suhu dalam batas normal")
-    }
-
-    // Analisis Kelembapan Udara (Range optimal: 50-70%)
-    if (kelembapan_udara < 40) {
-      status.push("Kelembapan udara terlalu rendah")
-      rekomendasi.push("Aktifkan humidifier untuk meningkatkan kelembapan udara")
-    } else if (kelembapan_udara > 85) {
-      status.push("Kelembapan udara terlalu tinggi")
-      rekomendasi.push("Buka ventilasi dan aktifkan kipas untuk mengurangi kelembapan")
-    } else if (kelembapan_udara >= 50 && kelembapan_udara <= 70) {
-      status.push("Kelembapan udara optimal")
-    } else {
-      status.push("Kelembapan udara dalam batas normal")
-    }
-
-    // Analisis Kelembapan Tanah (Range optimal: 40-60%)
-    if (kelembapan_tanah < 30) {
-      status.push("Kelembapan tanah terlalu rendah")
-      rekomendasi.push("Lakukan penyiraman segera")
-      rekomendasi.push("Periksa sistem irigasi")
-    } else if (kelembapan_tanah > 75) {
-      status.push("Kelembapan tanah terlalu tinggi")
-      rekomendasi.push("Kurangi frekuensi penyiraman")
-      rekomendasi.push("Periksa sistem drainase")
-    } else if (kelembapan_tanah >= 40 && kelembapan_tanah <= 60) {
-      status.push("Kelembapan tanah optimal")
-    } else {
-      status.push("Kelembapan tanah dalam batas normal")
-    }
-
-    // Analisis Cahaya (Range optimal: 800-1200 lux)
-    const hour = new Date().getHours()
-    const isDayTime = hour >= 6 && hour <= 18
-
-    if (isDayTime) {
-      // Analisis untuk siang hari
-      if (cahaya < 500) {
-        status.push("Cahaya kurang untuk siang hari")
-        rekomendasi.push("Aktifkan lampu tambahan")
-      } else if (cahaya >= 800 && cahaya <= 1200) {
-        status.push("Cahaya optimal")
-      } else if (cahaya > 1200) {
-        status.push("Cahaya terlalu terang")
-        rekomendasi.push("Gunakan shade cloth atau kurangi intensitas lampu")
-      } else {
-        status.push("Cahaya cukup")
-      }
-    } else {
-      // Analisis untuk malam hari
-      if (cahaya > 200) {
-        status.push("Cahaya terlalu terang untuk malam hari")
-        rekomendasi.push("Matikan lampu yang tidak perlu")
-      } else {
-        status.push("Cahaya malam normal")
-      }
-    }
-
-    // Jika tidak ada rekomendasi, berarti kondisi baik
-    if (rekomendasi.length === 0) {
-      rekomendasi.push("Kondisi greenhouse dalam keadaan baik")
-    }
-
-    return {
-      suhu,
-      kelembapan_udara,
-      kelembapan_tanah,
-      cahaya,
-      waktu: sensorData.waktu || sensorData.createdAt || new Date().toISOString(),
-      status,
-      rekomendasi,
     }
   }
 
@@ -331,7 +183,7 @@ const Monitoring = () => {
           <div className="connection-status">
             <div className={`status-indicator ${isOnline ? "online" : "offline"}`}>
               {isOnline ? <FiWifi /> : <FiWifiOff />}
-              <span>{isOnline ? "Terhubung" : "Offline"}</span>
+              <span>{isOnline ? `Terhubung${apiEndpoint ? ` (${apiEndpoint})` : ""}` : "Offline"}</span>
             </div>
           </div>
           <div className="last-update">
@@ -485,6 +337,20 @@ const Monitoring = () => {
             ))}
           </div>
         </section>
+
+        {/* Info sistem monitoring */}
+        {isOnline && (
+          <section className="info-section">
+            <div className="info-card">
+              <FiActivity className="info-icon" />
+              <div className="info-content">
+                <h4>Sistem Monitoring Aktif</h4>
+                <p>Data monitoring diperbarui otomatis setiap 15 detik menggunakan Monitoring API</p>
+                <p>Endpoint: {apiEndpoint || "Tidak diketahui"}</p>
+              </div>
+            </div>
+          </section>
+        )}
       </main>
     </div>
   )
