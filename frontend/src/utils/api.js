@@ -112,7 +112,6 @@ apiClient.interceptors.response.use(
   },
 )
 
-// Helper functions untuk authentication
 export const isAuthenticated = () => {
   const token = localStorage.getItem("token")
   const user = localStorage.getItem("user")
