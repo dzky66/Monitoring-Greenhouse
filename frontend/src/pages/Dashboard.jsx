@@ -115,6 +115,13 @@ const Dashboard = () => {
             color: "#4caf50",
             rawValue: 100,
           },
+          {
+            title: "Sistem",
+            value: "Online",
+            icon: FiWifi,
+            color: "#4caf50",
+            rawValue: 100,
+          },
         ]
 
         setSensorData(transformedData)
